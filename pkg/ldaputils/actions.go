@@ -1197,8 +1197,12 @@ func (lc *LDAPConn) FindSamForSID(SID string) (resolvedSID string, err error) {
 	}
 
 	if len(result.Entries) > 0 {
-		resolvedSID = result.Entries[0].GetAttributeValues("sAMAccountName")[0]
-		return resolvedSID, nil
+		samAccountNames := result.Entries[0].GetAttributeValues("sAMAccountName")
+		if len(samAccountNames) > 0 {
+			return samAccountNames[0], nil
+		}
+
+		return "", fmt.Errorf("entry has no sAMAccountName")
 	}
 
 	return "", fmt.Errorf("No entries found")
