@@ -24,7 +24,7 @@ import (
 	"software.sslmate.com/src/go-pkcs12"
 )
 
-var GodapVer = "Godap v2.10.7"
+var GodapVer = "Godap v2.10.8"
 var (
 	LdapServer       string
 	LdapPort         int
