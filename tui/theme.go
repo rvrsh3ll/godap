@@ -58,7 +58,7 @@ var DefaultTheme = GodapTheme{
 	FormButtonStyle:           tcell.Style{}.Background(tcell.ColorWhite),
 	FormButtonTextColor:       tcell.ColorBlack,
 	FormButtonBackgroundColor: tcell.ColorWhite,
-	FormButtonActivatedStyle:  tcell.StyleDefault.Background(tcell.ColorGray),
+	FormButtonActivatedStyle:  tcell.StyleDefault.Background(tcell.ColorBlue).Foreground(tcell.ColorWhite),
 
 	// Tree node colors
 	RecycledNodeColor: tcell.ColorRed,
