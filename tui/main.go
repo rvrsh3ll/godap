@@ -715,7 +715,7 @@ func SetupApp() {
 	tview.Styles = baseTheme
 
 	logPanel = tview.NewTextView()
-	logPanel.SetTitle("Last Log")
+	logPanel.SetWordWrap(false).SetTitle("Last Log")
 	logPanel.SetTextAlign(tview.AlignCenter).SetBorder(true)
 
 	tlsPanel = tview.NewTextView()
