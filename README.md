@@ -1,8 +1,17 @@
-# godap
-
-![GitHub Release](https://img.shields.io/github/v/release/Macmod/godap) ![](https://img.shields.io/github/go-mod/go-version/Macmod/godap) ![](https://img.shields.io/github/languages/code-size/Macmod/godap) ![](https://img.shields.io/github/license/Macmod/godap) ![](https://img.shields.io/github/actions/workflow/status/Macmod/godap/release.yml) [![Go Report Card](https://goreportcard.com/badge/github.com/Macmod/godap)](https://goreportcard.com/report/github.com/Macmod/godap) ![GitHub Downloads](https://img.shields.io/github/downloads/Macmod/godap/total) [<img alt="Twitter Follow" src="https://img.shields.io/twitter/follow/MacmodSec?style=for-the-badge&logo=X&color=blue">](https://twitter.com/MacmodSec)
-
-<h3>A complete TUI for LDAP.</h3>
+<p align="center">
+  <h1 align="center"><b>godap</b></h1>
+  <p align="center"><i>A complete terminal user interface (TUI) for LDAP.</i></p>
+  <p align="center">
+    <img src="https://img.shields.io/github/v/release/Macmod/godap" alt="GitHub Release">
+    <img src="https://img.shields.io/github/go-mod/go-version/Macmod/godap" alt="">
+    <img src="https://img.shields.io/github/languages/code-size/Macmod/godap" alt="">
+    <img src="https://img.shields.io/github/license/Macmod/godap" alt="">
+    <img src="https://img.shields.io/github/actions/workflow/status/Macmod/godap/release.yml" alt="">
+    <a href="https://goreportcard.com/report/github.com/Macmod/godap"><img src="https://goreportcard.com/badge/github.com/Macmod/godap" alt="Go Report Card"></a>
+    <img src="https://img.shields.io/github/downloads/Macmod/godap/total" alt="GitHub Downloads">
+    <a href="https://twitter.com/MacmodSec"><img src="https://img.shields.io/twitter/follow/MacmodSec?style=for-the-badge&logo=X&color=blue" alt="Twitter Follow"></a>
+  </p>
+</p>
 
 ![Demo](images/godap.gif)
 
