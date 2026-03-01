@@ -20,8 +20,6 @@ var (
 	rootDNInput        *tview.InputField
 	searchFilterInput  *tview.InputField
 	treeFlex           *tview.Flex
-
-	addMemberToGroupFormValidation bool
 )
 
 func initExplorerPage() {
@@ -333,6 +331,7 @@ func openCreateObjectForm(node *tview.TreeNode, done func()) {
 
 func openAddMemberToGroupForm(targetDN string, isGroup bool) {
 	currentFocus := app.GetFocus()
+	addMemberToGroupFormValidation := false
 
 	addMemberForm := NewXForm().
 		AddInputField("Group DN", "", 0, nil, nil).
@@ -363,7 +362,7 @@ func openAddMemberToGroupForm(targetDN string, isGroup bool) {
 			objectDNFormItem.SetText(object.DN)
 		} else {
 			addMemberToGroupFormValidation = false
-			objectDNFormItem.SetText("[red]Object not found")
+			objectDNFormItem.SetText("[red]Object not found[-]")
 		}
 	})
 
@@ -383,12 +382,13 @@ func openAddMemberToGroupForm(targetDN string, isGroup bool) {
 			}
 
 			objectDN := addMemberForm.GetFormItemByLabel("Object DN").(*tview.TextView).GetText(true)
+			groupDN := addMemberForm.GetFormItemByLabel("Group DN").(*tview.InputField).GetText()
 
-			err = lc.AddMemberToGroup(objectDN, targetDN)
+			err = lc.AddMemberToGroup(objectDN, groupDN)
 			if err != nil {
 				updateLog(fmt.Sprintf("%s", err), "red")
 			} else {
-				updateLog("Member '"+objectDN+"' added to group '"+targetDN+"'", "green")
+				updateLog("Member '"+objectDN+"' added to group '"+groupDN+"'", "green")
 			}
 
 			app.SetRoot(appPanel, true).SetFocus(currentFocus)
