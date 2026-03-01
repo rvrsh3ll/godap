@@ -3,12 +3,10 @@ package ldaputils
 var EmojiMap = map[string]string{
 	"root":                     "🌳",
 	"user":                     "👤",  // Human user
-	"computer":                 "🖥️", // Computer account
+	"computer":                 "💻️", // Computer account
 	"group":                    "👥",  // Group of users
 	"organizationalUnit":       "📂",  // Organizational unit
 	"container":                "📁",  // Container
-	"person":                   "👨",  // Generic person
-	"organizationalPerson":     "👔",  // Organizational person
 	"groupOfNames":             "📇",  // Group of names
 	"domain":                   "🌐",  // Domain
 	"domainDNS":                "🔗",  // DNS Domain
