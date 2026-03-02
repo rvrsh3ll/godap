@@ -439,7 +439,7 @@ func handleAttrsKeyEnter(currentNode *tview.TreeNode, attrsPanel *tview.Table, c
 			myCell := tview.NewTableCell(cellValue.FormattedValue).SetReference(cellValue.OriginalValue)
 
 			if Colors {
-				color, ok := GetAttrCellColor(attrName, cellValue.OriginalValue)
+				color, ok := GetAttrCellColor(attrName, cellValue)
 				if ok {
 					myCell.SetTextColor(tcell.GetColor(color))
 				}
@@ -591,8 +591,8 @@ func reloadAttributesPanel(node *tview.TreeNode, attrsTable *tview.Table, useCac
 			myCell = tview.NewTableCell(fmtAttrs.ValuesStr())
 			myCell.SetReference(nil)
 
-			if Colors {
-				color, ok := GetAttrCellColor(cellName, fmtAttrs.Values[0].OriginalValue)
+			if Colors && len(fmtAttrs.Values) == 1 {
+				color, ok := GetAttrCellColor(cellName, fmtAttrs.Values[0])
 				if ok {
 					myCell.SetTextColor(tcell.GetColor(color))
 				}
@@ -610,7 +610,7 @@ func reloadAttributesPanel(node *tview.TreeNode, attrsTable *tview.Table, useCac
 			myCell = tview.NewTableCell(cellValue.FormattedValue).SetReference(cellValue.OriginalValue)
 
 			if Colors {
-				color, ok := GetAttrCellColor(cellName, cellValue.OriginalValue)
+				color, ok := GetAttrCellColor(cellName, cellValue)
 
 				if ok {
 					myCell.SetTextColor(tcell.GetColor(color))

@@ -233,12 +233,12 @@ func GetEntryColor(entry *ldap.Entry) (tcell.Color, bool) {
 	return baseTheme.PrimaryTextColor, false
 }
 
-func GetAttrCellColor(cellName string, cellValue string) (string, bool) {
+func GetAttrCellColor(cellName string, cellValue ldaputils.FormattedAttrValue) (string, bool) {
 	var color string = ""
 
 	switch cellName {
 	case "lastLogonTimestamp", "accountExpires", "badPasswordTime", "lastLogoff", "lastLogon", "pwdLastSet", "creationTime", "lockoutTime":
-		intValue, err := strconv.ParseInt(cellValue, 10, 64)
+		intValue, err := strconv.ParseInt(cellValue.OriginalValue, 10, 64)
 		if err == nil {
 			unixTime := (intValue - 116444736000000000) / 10000000
 			t := time.Unix(unixTime, 0).UTC()
@@ -257,7 +257,7 @@ func GetAttrCellColor(cellName string, cellValue string) (string, bool) {
 		color = "gray"
 	case "whenCreated", "whenChanged":
 		layout := "20060102150405.0Z"
-		t, err := time.Parse(layout, cellValue)
+		t, err := time.Parse(layout, cellValue.OriginalValue)
 		if err == nil {
 			daysDiff := int(time.Since(t).Hours() / 24)
 
@@ -270,7 +270,7 @@ func GetAttrCellColor(cellName string, cellValue string) (string, bool) {
 			}
 		}
 	case "lockoutDuration", "msDS-LockoutDuration", "lockOutObservationWindow", "msDS-LockoutObservationWindow":
-		duration, err := ldaputils.ParseMSDuration(cellValue)
+		duration, err := ldaputils.ParseMSDuration(cellValue.OriginalValue)
 		if err == nil {
 			if duration <= 5*60*time.Second {
 				color = "green"
@@ -281,7 +281,7 @@ func GetAttrCellColor(cellName string, cellValue string) (string, bool) {
 			}
 		}
 	case "maxPwdAge", "msDS-MaximumPasswordAge":
-		duration, err := ldaputils.ParseMSDuration(cellValue)
+		duration, err := ldaputils.ParseMSDuration(cellValue.OriginalValue)
 		if err == nil {
 			if duration <= 30*24*time.Hour {
 				color = "red"
@@ -292,7 +292,7 @@ func GetAttrCellColor(cellName string, cellValue string) (string, bool) {
 			}
 		}
 	case "minPwdAge", "msDS-MinimumPasswordAge":
-		duration, err := ldaputils.ParseMSDuration(cellValue)
+		duration, err := ldaputils.ParseMSDuration(cellValue.OriginalValue)
 		if err == nil {
 			if duration == 0*time.Second {
 				color = "green"
@@ -303,7 +303,7 @@ func GetAttrCellColor(cellName string, cellValue string) (string, bool) {
 			}
 		}
 	case "forceLogoff":
-		duration, err := ldaputils.ParseMSDuration(cellValue)
+		duration, err := ldaputils.ParseMSDuration(cellValue.OriginalValue)
 		if err == nil {
 			if duration == 0*time.Second {
 				color = "red"
@@ -314,7 +314,7 @@ func GetAttrCellColor(cellName string, cellValue string) (string, bool) {
 			}
 		}
 	case "msDS-UserTGTLifetime", "msDS-ComputerTGTLifetime", "msDS-ServiceTGTLifetime":
-		duration, err := ldaputils.ParseMSDuration(cellValue)
+		duration, err := ldaputils.ParseMSDuration(cellValue.OriginalValue)
 		if err == nil {
 			if duration >= 24*time.Hour {
 				color = "green"
@@ -325,7 +325,7 @@ func GetAttrCellColor(cellName string, cellValue string) (string, bool) {
 			}
 		}
 	case "lockoutThreshold", "msDS-LockoutThreshold":
-		intValue, err := strconv.ParseInt(cellValue, 10, 64)
+		intValue, err := strconv.ParseInt(cellValue.OriginalValue, 10, 64)
 		if err == nil {
 			if intValue == 0 {
 				color = "green"
@@ -336,7 +336,7 @@ func GetAttrCellColor(cellName string, cellValue string) (string, bool) {
 			}
 		}
 	case "minPwdLength", "msDS-MinimumPasswordLength":
-		intValue, err := strconv.ParseInt(cellValue, 10, 64)
+		intValue, err := strconv.ParseInt(cellValue.OriginalValue, 10, 64)
 		if err == nil {
 			if intValue >= 12 {
 				color = "red"
@@ -347,7 +347,7 @@ func GetAttrCellColor(cellName string, cellValue string) (string, bool) {
 			}
 		}
 	case "badPwdCount":
-		intValue, err := strconv.ParseInt(cellValue, 10, 64)
+		intValue, err := strconv.ParseInt(cellValue.OriginalValue, 10, 64)
 		if err == nil {
 			if intValue > 0 {
 				color = "yellow"
@@ -356,7 +356,7 @@ func GetAttrCellColor(cellName string, cellValue string) (string, bool) {
 			}
 		}
 	case "logonCount":
-		intValue, err := strconv.ParseInt(cellValue, 10, 64)
+		intValue, err := strconv.ParseInt(cellValue.OriginalValue, 10, 64)
 		if err == nil {
 			if intValue >= 10 {
 				color = "green"
@@ -368,7 +368,7 @@ func GetAttrCellColor(cellName string, cellValue string) (string, bool) {
 		}
 	}
 
-	switch cellValue {
+	switch cellValue.FormattedValue {
 	case "TRUE", "Enabled", "Normal", "PwdNotExpired":
 		color = "green"
 	case "FALSE", "NotNormal", "PwdExpired":
