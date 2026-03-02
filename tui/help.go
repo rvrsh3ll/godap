@@ -24,6 +24,8 @@ func initHelpPage() {
 		{"Ctrl + r", "Global", "Reconnect to the server"},
 		{"Ctrl + u", "Global", "Upgrade connection to use TLS (with StartTLS)"},
 		{"Ctrl + f", "Explorer & Object Search pages", "Open the finder to search for cached objects & attributes with regex"},
+		{"Ctrl + b", "Explorer page", "Open the explorer settings (Base DN & expand filter)"},
+		{"Ctrl + b", "Object Search page", "Open the search settings (Base DN & scope)"},
 		{"Left Arrow", "Explorer panel", "Collapse the children of the selected object"},
 		{"Right Arrow", "Explorer panel", "Expand the children of the selected object"},
 		{"r", "Explorer panel", "Reload the attributes and children of the selected object"},

@@ -17,9 +17,8 @@ var (
 	explorerPage       *tview.Flex
 	treePanel          *tview.TreeView
 	explorerAttrsPanel *tview.Table
-	rootDNInput        *tview.InputField
-	searchFilterInput  *tview.InputField
 	treeFlex           *tview.Flex
+	explorerBaseDN     string
 )
 
 func initExplorerPage() {
@@ -27,24 +26,14 @@ func initExplorerPage() {
 		entries: make(map[string]*ldap.Entry),
 	}
 
+	explorerBaseDN = lc.DefaultRootDN
+
 	treePanel = tview.NewTreeView()
 
-	rootNode = renderPartialTree(RootDN, SearchFilter)
+	rootNode = renderPartialTree(explorerBaseDN, SearchFilter)
 	treePanel.SetRoot(rootNode).SetCurrentNode(rootNode)
 
 	explorerAttrsPanel = tview.NewTable().SetSelectable(true, true)
-
-	searchFilterInput = tview.NewInputField().
-		SetText(SearchFilter)
-	searchFilterInput.SetTitle("Expand Filter")
-	searchFilterInput.SetBorder(true)
-	assignInputFieldTheme(searchFilterInput)
-
-	rootDNInput = tview.NewInputField().
-		SetText(RootDN)
-	rootDNInput.SetTitle("Root DN")
-	rootDNInput.SetBorder(true)
-	assignInputFieldTheme(rootDNInput)
 
 	explorerAttrsPanel.
 		SetEvaluateAllRows(true).
@@ -52,23 +41,7 @@ func initExplorerPage() {
 		SetBorder(true)
 
 	// Event Handlers
-	searchFilterInput.SetDoneFunc(func(key tcell.Key) {
-		SearchFilter = searchFilterInput.GetText()
-		reloadExplorerPage()
-	})
-
-	rootDNInput.SetDoneFunc(func(key tcell.Key) {
-		lc.RootDN = rootDNInput.GetText()
-		reloadExplorerPage()
-	})
-
 	treeFlex = tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(
-			tview.NewFlex().
-				AddItem(searchFilterInput, 0, 1, false).
-				AddItem(rootDNInput, 0, 1, false),
-			3, 0, false,
-		).
 		AddItem(treePanel, 0, 1, false)
 
 	treeFlex.SetBorder(true)
@@ -589,6 +562,45 @@ func openMoveObjectForm(node *tview.TreeNode, done func(string)) {
 	app.SetRoot(moveObjectForm, true).SetFocus(moveObjectForm)
 }
 
+func openExplorerSettingsForm() {
+	currentFocus := app.GetFocus()
+
+	baseDNField := tview.NewInputField().
+		SetLabel("Base DN").
+		SetText(explorerBaseDN)
+	assignInputFieldTheme(baseDNField)
+
+	filterField := tview.NewInputField().
+		SetLabel("Expand Filter").
+		SetText(SearchFilter)
+	assignInputFieldTheme(filterField)
+
+	form := NewXForm()
+	form.
+		AddFormItem(baseDNField).
+		AddFormItem(filterField).
+		AddButton("Go Back", func() {
+			app.SetRoot(appPanel, true).SetFocus(currentFocus)
+		}).
+		AddButton("Set", func() {
+			explorerBaseDN = baseDNField.GetText()
+			SearchFilter = filterField.GetText()
+			updateLog("Explorer settings updated.", "green")
+			app.SetRoot(appPanel, true).SetFocus(currentFocus)
+			reloadExplorerPage()
+		})
+
+	form.SetTitle("Explorer Settings").SetBorder(true)
+	form.SetInputCapture(handleEscape(currentFocus))
+
+	centeredForm := tview.NewGrid().
+		SetColumns(0, 60, 0).
+		SetRows(0, 9, 0).
+		AddItem(form, 1, 1, 1, 1, 0, 0, true)
+
+	app.SetRoot(centeredForm, true).SetFocus(form)
+}
+
 func explorerPageKeyHandler(event *tcell.EventKey) *tcell.EventKey {
 	if event.Key() == tcell.KeyTab || event.Key() == tcell.KeyBacktab {
 		explorerRotateFocus()
@@ -603,6 +615,8 @@ func explorerPageKeyHandler(event *tcell.EventKey) *tcell.EventKey {
 	switch event.Key() {
 	case tcell.KeyCtrlF:
 		openFinder(&explorerCache, "LDAP Explorer")
+	case tcell.KeyCtrlB:
+		openExplorerSettingsForm()
 	case tcell.KeyCtrlP:
 		openPasswordChangeForm(currentNode)
 	case tcell.KeyCtrlL:

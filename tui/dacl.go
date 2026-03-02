@@ -71,7 +71,7 @@ func parseAces(dst *[]ParsedACE, srcSD *sdl.SecurityDescriptor) {
 				entry.NoPropagate = true
 			}
 
-			permissions := ldaputils.HexToInt(ldaputils.EndianConvert(aceVal.Mask))
+			permissions := ldaputils.HexToUint32(ldaputils.EndianConvert(aceVal.Mask))
 
 			entry.Mask, entry.Severity = sdl.AceMaskToText(permissions, "")
 		case *sdl.OBJECT_ACE:
@@ -104,7 +104,7 @@ func parseAces(dst *[]ParsedACE, srcSD *sdl.SecurityDescriptor) {
 				entry.NoPropagate = true
 			}
 
-			permissions := ldaputils.HexToInt(ldaputils.EndianConvert(aceVal.Mask))
+			permissions := ldaputils.HexToUint32(ldaputils.EndianConvert(aceVal.Mask))
 			objectType, inheritedObjectType := aceVal.GetObjectAndInheritedType()
 			entry.Mask, entry.Severity = sdl.AceMaskToText(permissions, objectType)
 			entry.Scope = sdl.AceFlagsToText(aceVal.Header.ACEFlags, inheritedObjectType)
@@ -189,7 +189,7 @@ func initDaclPage(includeCurSchema bool) {
 			ace := parsedAces[row-1]
 			maskInt := ace.Raw.GetMask()
 
-			aceMask.SetText(strconv.Itoa(maskInt))
+			aceMask.SetText(strconv.FormatUint(uint64(maskInt), 10))
 			aceMaskBinary.SetText(fmt.Sprintf("%032b", maskInt))
 
 			acePanel.Clear()
@@ -314,11 +314,12 @@ func updateDaclEntries() {
 				readableMask = "Special"
 			}
 
-			if entry.Severity == 1 {
+			switch entry.Severity {
+			case 1:
 				readableMask = "[purple]" + readableMask
-			} else if entry.Severity == 2 {
+			case 2:
 				readableMask = "[blue]" + readableMask
-			} else if entry.Severity == 3 {
+			case 3:
 				readableMask = "[red]" + readableMask
 			}
 

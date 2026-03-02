@@ -183,6 +183,8 @@ For more usage information & examples check the [Wiki](https://github.com/Macmod
 | <kbd>Ctrl</kbd> + <kbd>r</kbd>                      | Global                                                            | Reconnect to the server                                                         |
 | <kbd>Ctrl</kbd> + <kbd>u</kbd>                      | Global                                                            | Upgrade connection to use TLS (with StartTLS)                                   |
 | <kbd>Ctrl</kbd> + <kbd>f</kbd>                      | Explorer & Search pages                                           | Open the finder to search for cached objects & attributes with regex            |
+| <kbd>Ctrl</kbd> + <kbd>b</kbd>                      | Explorer page                                                     | Open the explorer settings (Base DN & expand filter)                            |
+| <kbd>Ctrl</kbd> + <kbd>b</kbd>                      | Object Search page                                                | Open the search settings (Base DN & scope)                                      |
 | Right Arrow                                         | Explorer panel                                                    | Expand the children of the selected object                                      |
 | Left Arrow                                          | Explorer panel                                                    | Collapse the children of the selected object                                    |
 | <kbd>r</kbd>                                        | Explorer panel                                                    | Reload the attributes and children of the selected object                       |

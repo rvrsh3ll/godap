@@ -20,15 +20,15 @@ func getACE(rawACE string) (ACE string) {
 	return
 }
 
-func checkRightExact(mask int, right int) bool {
+func checkRightExact(mask uint32, right uint32) bool {
 	return mask&right == right
 }
 
-func checkRight(mask int, right int) bool {
+func checkRight(mask uint32, right uint32) bool {
 	return mask&right != 0
 }
 
-func combinePerms(rights []int, rightNames []string, mask int) string {
+func combinePerms(rights []uint32, rightNames []string, mask uint32) string {
 	var combined []string
 
 	for idx, right := range rights {
@@ -42,7 +42,7 @@ func combinePerms(rights []int, rightNames []string, mask int) string {
 
 // At the moment this is an experimental & testing accuracy of the parser is hard.
 // There are probably some bugs, bug they can be solved in the future :-)
-func AceMaskToText(mask int, guid string) ([]string, int) {
+func AceMaskToText(mask uint32, guid string) ([]string, int) {
 	var (
 		classNeeded     bool
 		attributeNeeded bool
@@ -110,7 +110,7 @@ func AceMaskToText(mask int, guid string) ([]string, int) {
 	var readableRights []string
 
 	specificChildPermission := combinePerms(
-		[]int{
+		[]uint32{
 			AccessRightsMap["RIGHT_DS_CREATE_CHILD"], // 0x01
 			AccessRightsMap["RIGHT_DS_DELETE_CHILD"], // 0x02
 		},
@@ -119,7 +119,7 @@ func AceMaskToText(mask int, guid string) ([]string, int) {
 	)
 
 	specificPermission := combinePerms(
-		[]int{
+		[]uint32{
 			AccessRightsMap["RIGHT_DS_READ_PROPERTY"],  // 0x10
 			AccessRightsMap["RIGHT_DS_WRITE_PROPERTY"], // 0x20
 		},
@@ -128,7 +128,7 @@ func AceMaskToText(mask int, guid string) ([]string, int) {
 	)
 
 	genericPermission := combinePerms(
-		[]int{
+		[]uint32{
 			AccessRightsMap["GENERIC_READ"],  // 0x00020094
 			AccessRightsMap["GENERIC_WRITE"], // 0x00020028
 		},

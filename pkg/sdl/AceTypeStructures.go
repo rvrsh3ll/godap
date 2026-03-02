@@ -30,10 +30,10 @@ func (ah *ACEHEADER) Encode() string {
 // ACE Interface
 type ACEInt interface {
 	GetHeader() *ACEHEADER
-	GetMask() int
+	GetMask() uint32
 	GetSID() string
 	SetHeader(*ACEHEADER)
-	SetMask(int)
+	SetMask(uint32)
 	SetSID(string) error
 	Parse(string)
 	Encode() string
@@ -50,8 +50,8 @@ func (ace *BASIC_ACE) GetHeader() *ACEHEADER {
 	return ace.Header
 }
 
-func (ace *BASIC_ACE) GetMask() int {
-	return ldaputils.HexToInt(ldaputils.EndianConvert(ace.Mask))
+func (ace *BASIC_ACE) GetMask() uint32 {
+	return ldaputils.HexToUint32(ldaputils.EndianConvert(ace.Mask))
 }
 
 func (ace *BASIC_ACE) GetSID() string {
@@ -62,7 +62,7 @@ func (ace *BASIC_ACE) SetHeader(header *ACEHEADER) {
 	ace.Header = header
 }
 
-func (ace *BASIC_ACE) SetMask(mask int) {
+func (ace *BASIC_ACE) SetMask(mask uint32) {
 	ace.Mask = ldaputils.EndianConvert(fmt.Sprintf("%08x", mask))
 }
 

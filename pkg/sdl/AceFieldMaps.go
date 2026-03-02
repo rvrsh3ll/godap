@@ -33,7 +33,7 @@ var AceFlagsMap = map[string]int{
 	"SUCCESSFUL_ACCESS_ACE_FLAG": 0x40,
 }
 
-var AccessRightsMap = map[string]int{
+var AccessRightsMap = map[string]uint32{
 	"RIGHT_DS_CREATE_CHILD":   0x00000001,
 	"RIGHT_DS_DELETE_CHILD":   0x00000002,
 	"RIGHT_DS_LIST_CONTENTS":  0x00000004,

@@ -24,7 +24,7 @@ import (
 	"software.sslmate.com/src/go-pkcs12"
 )
 
-var GodapVer = "Godap v2.10.8"
+var GodapVer = "Godap v2.10.9"
 var (
 	LdapServer       string
 	LdapPort         int
@@ -188,13 +188,14 @@ func toggleFlagD() {
 
 func updateSortStateBox(option string) {
 	go app.QueueUpdateDraw(func() {
-		if option == "none" {
+		switch option {
+		case "none":
 			sortAttrsFlagPanel.SetText("OFF")
 			sortAttrsFlagPanel.SetTextColor(tcell.GetColor("red"))
-		} else if option == "asc" {
+		case "asc":
 			sortAttrsFlagPanel.SetText("ASC")
 			sortAttrsFlagPanel.SetTextColor(tcell.GetColor("green"))
-		} else {
+		default:
 			sortAttrsFlagPanel.SetText("DESC")
 			sortAttrsFlagPanel.SetTextColor(tcell.GetColor("green"))
 		}
@@ -593,7 +594,7 @@ func setupLDAPConn() error {
 	}
 
 	var proxyConn net.Conn = nil
-	var err error = nil
+	var err error
 
 	if SocksServer != "" {
 		proxyDial := socks.Dial(SocksServer)
@@ -787,7 +788,6 @@ func SetupApp() {
 	}
 
 	lc.DefaultRootDN = RootDN
-	lc.RootDN = RootDN
 
 	// Pages setup
 	// TODO: Refactor this chunk

@@ -19,7 +19,6 @@ import (
 )
 
 var (
-	rootDNSNode   *tview.TreeNode
 	dnsTreePanel  *tview.TreeView
 	dnsQueryPanel *tview.InputField
 
@@ -415,11 +414,12 @@ func initADIDNSPage() {
 		switch event.Rune() {
 		case 'r', 'R':
 			go app.QueueUpdateDraw(func() {
-				if level == 0 {
+				switch level {
+				case 0:
 					go queryDnsZones(dnsQueryPanel.GetText())
-				} else if level == 1 {
+				case 1:
 					reloadADIDNSZone(currentNode)
-				} else if level == 2 {
+				case 2:
 					reloadADIDNSNode(currentNode)
 				}
 			})
@@ -452,9 +452,10 @@ func initADIDNSPage() {
 			}
 
 			openDeleteObjectForm(currentNode, func() {
-				if level == 1 {
+				switch level {
+				case 1:
 					go queryDnsZones(dnsQueryPanel.GetText())
-				} else if level == 2 {
+				case 2:
 					pathToCurrent := dnsTreePanel.GetPath(currentNode)
 					if len(pathToCurrent) > 1 {
 						parentNode := pathToCurrent[len(pathToCurrent)-2]
@@ -470,9 +471,10 @@ func initADIDNSPage() {
 			if currentNode == dnsTreePanel.GetRoot() {
 				openCreateZoneForm()
 			} else {
-				if level == 1 {
+				switch level {
+				case 1:
 					openCreateNodeForm(currentNode)
-				} else if level == 2 {
+				case 2:
 					parentZone := getParentNode(currentNode, dnsTreePanel)
 					openCreateNodeForm(parentZone)
 				}
@@ -662,8 +664,8 @@ func queryDnsZones(targetZone string) {
 		}
 
 		// Setting up root node
-		rootDNSNode := tview.NewTreeNode(lc.RootDN).
-			SetReference(lc.RootDN).
+		rootDNSNode := tview.NewTreeNode(lc.DefaultRootDN).
+			SetReference(lc.DefaultRootDN).
 			SetSelectable(true)
 		dnsTreePanel.
 			SetRoot(rootDNSNode).

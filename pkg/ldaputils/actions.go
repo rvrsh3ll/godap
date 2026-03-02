@@ -33,7 +33,6 @@ const (
 type LDAPConn struct {
 	Conn          *ldap.Conn
 	PagingSize    uint32
-	RootDN        string
 	DefaultRootDN string
 	Flavor        LDAPFlavor
 }
@@ -102,7 +101,6 @@ func NewLDAPConn(ldapServer string, ldapPort int, ldaps bool, tlsConfig *tls.Con
 	return &LDAPConn{
 		Conn:          conn,
 		PagingSize:    pagingSize,
-		RootDN:        rootDN,
 		DefaultRootDN: rootDN,
 	}, nil
 }
@@ -539,11 +537,6 @@ func (lc *LDAPConn) QueryFirst(filter string) (*ldap.Entry, error) {
 // User Passwords
 // Reference: https://gist.github.com/Project0/61c13130563cf7f595e031d54fe55aab
 const (
-	ldapAttrAccountName                        = "sAMAccountName"
-	ldapAttrDN                                 = "dn"
-	ldapAttrUAC                                = "userAccountControl"
-	ldapAttrUPN                                = "userPrincipalName" // username@logon.domain
-	ldapAttrEmail                              = "mail"
 	ldapAttrUnicodePw                          = "unicodePwd"
 	controlTypeLdapServerPolicyHints           = "1.2.840.113556.1.4.2239"
 	controlTypeLdapServerPolicyHintsDeprecated = "1.2.840.113556.1.4.2066"
@@ -770,7 +763,7 @@ func (lc *LDAPConn) AddADIDNSZone(objectName string, props []adidns.DNSProperty,
 		zoneContainer = "ForestDnsZones"
 	}
 
-	zoneDN := fmt.Sprintf("DC=%s,CN=MicrosoftDNS,DC=%s,%s", objectName, zoneContainer, lc.RootDN)
+	zoneDN := fmt.Sprintf("DC=%s,CN=MicrosoftDNS,DC=%s,%s", objectName, zoneContainer, lc.DefaultRootDN)
 
 	addRequest := ldap.NewAddRequest(zoneDN, nil)
 	addRequest.Attribute("objectClass", []string{"top", "dnsZone"})
@@ -1046,7 +1039,7 @@ func (lc *LDAPConn) GetSecurityDescriptor(object string) (queryResult string, er
 	switch {
 	case isSamAccountName:
 		searchReq = ldap.NewSearchRequest(
-			lc.RootDN,
+			lc.DefaultRootDN,
 			ldap.ScopeWholeSubtree,
 			ldap.NeverDerefAliases, 0, 0, false,
 			samOrDn,
@@ -1209,14 +1202,14 @@ func (lc *LDAPConn) FindSamForSID(SID string) (resolvedSID string, err error) {
 }
 
 func (lc *LDAPConn) FindPrimaryGroupForSID(SID string) (groupSID string, err error) {
-	domainSID, err := lc.FindSIDForObject(lc.RootDN)
+	domainSID, err := lc.FindSIDForObject(lc.DefaultRootDN)
 	if err != nil {
 		return "", err
 	}
 
 	query := fmt.Sprintf("(objectSID=%s)", SID)
 	searchReq := ldap.NewSearchRequest(
-		lc.RootDN,
+		lc.DefaultRootDN,
 		ldap.ScopeWholeSubtree, 0, 0, 0, false,
 		query,
 		[]string{"primaryGroupID"},

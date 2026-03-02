@@ -34,7 +34,7 @@ func EndianConvert(sd string) (newSD string) {
 
 func HexToDecimalString(hex string) (decimal string) {
 	integer, _ := strconv.ParseInt(hex, 16, 64)
-	decimal = strconv.Itoa(int(integer))
+	decimal = strconv.FormatInt(integer, 10)
 
 	return
 }
@@ -43,6 +43,11 @@ func HexToInt(hex string) (integer int) {
 	integer64, _ := strconv.ParseInt(hex, 16, 64)
 	integer = int(integer64)
 	return
+}
+
+func HexToUint32(hex string) uint32 {
+	integer64, _ := strconv.ParseUint(hex, 16, 32)
+	return uint32(integer64)
 }
 
 func Capitalize(str string) string {
@@ -77,7 +82,6 @@ func ConvertSID(hexSID string) (SID string) {
 	return
 }
 
-// TODO: Review correctness of this function
 func EncodeSID(sid string) (string, error) {
 	if len(sid) < 2 {
 		return "", fmt.Errorf("Invalid SID format")
@@ -100,13 +104,13 @@ func EncodeSID(sid string) (string, error) {
 	subAuthoritiesCount := len(parts) - 2
 	hexSID += fmt.Sprintf("%02X", subAuthoritiesCount)
 
-	identifierAuthority, _ := strconv.Atoi(parts[1])
+	identifierAuthority, _ := strconv.ParseUint(parts[1], 10, 64)
 	for i := 0; i < 6; i++ {
 		hexSID += fmt.Sprintf("%02X", byte(identifierAuthority>>(8*(5-i))&0xFF))
 	}
 
 	for _, subAuthority := range parts[2:] {
-		subAuthorityValue, err := strconv.Atoi(subAuthority)
+		subAuthorityValue, err := strconv.ParseUint(subAuthority, 10, 32)
 		if err != nil {
 			return "", fmt.Errorf("Error parsing subauthority: %v", err)
 		}
@@ -178,57 +182,164 @@ func FormatLDAPTime2(val, format string, offset int) string {
 	return fmt.Sprintf("%s %s", t.Format(format), distString)
 }
 
-func FormatLDAPAttribute(attr *ldap.EntryAttribute, timeFormat string, timeOffset int) []string {
-	var formattedEntries = attr.Values
+func FormatDuration(d time.Duration) string {
+	days := d / (24 * time.Hour)
+	d -= days * 24 * time.Hour
 
-	if len(attr.Values) == 0 {
-		return []string{"(Empty)"}
+	hours := d / time.Hour
+	d -= hours * time.Hour
+
+	minutes := d / time.Minute
+	d -= minutes * time.Minute
+
+	seconds := d / time.Second
+
+	parts := []string{}
+	if days > 0 {
+		parts = append(parts, fmt.Sprintf("%d days", days))
+	}
+	if hours > 0 {
+		parts = append(parts, fmt.Sprintf("%d hours", hours))
+	}
+	if minutes > 0 {
+		parts = append(parts, fmt.Sprintf("%d minutes", minutes))
+	}
+	if seconds > 0 {
+		parts = append(parts, fmt.Sprintf("%d seconds", seconds))
 	}
 
+	if len(parts) == 0 {
+		return "0 seconds"
+	}
+	return strings.Join(parts, " ")
+}
+
+func ParseUACFlags(uacInt int) []string {
+	uacFlagKeys := make([]int, 0)
+	for k := range UacFlags {
+		uacFlagKeys = append(uacFlagKeys, k)
+	}
+	sort.Ints(uacFlagKeys)
+
+	var uacFlagsList []string
+	for _, flag := range uacFlagKeys {
+		curFlag := UacFlags[flag]
+		if uacInt&flag != 0 {
+			if curFlag.Present != "" {
+				uacFlagsList = append(uacFlagsList, curFlag.Present)
+			}
+		} else {
+			if curFlag.NotPresent != "" {
+				uacFlagsList = append(uacFlagsList, curFlag.NotPresent)
+			}
+		}
+	}
+
+	return uacFlagsList
+}
+
+func ParseSystemFlags(v uint32) []string {
+	sysFlagKeys := make([]uint32, 0)
+	for k := range SystemFlags {
+		sysFlagKeys = append(sysFlagKeys, k)
+	}
+	sort.Slice(sysFlagKeys, func(i, j int) bool {
+		return sysFlagKeys[i] < sysFlagKeys[j]
+	})
+
+	var result []string
+	for _, bit := range sysFlagKeys {
+		if v&bit != 0 {
+			result = append(result, SystemFlags[bit])
+		}
+	}
+
+	return result
+}
+
+func ParseMSDuration(val string) (time.Duration, error) {
+	intValue, err := strconv.ParseInt(val, 10, 64)
+
+	if err == nil {
+		if intValue < 0 {
+			intValue = -intValue
+		}
+
+		duration := time.Duration(intValue/10000000) * time.Second
+		return duration, nil
+	}
+
+	return 0, fmt.Errorf("Invalid duration value")
+}
+
+type FormattedAttrValue struct {
+	OriginalValue  string
+	FormattedValue string
+}
+
+type FormattedAttr struct {
+	Values []FormattedAttrValue
+}
+
+func (e FormattedAttr) ValuesStr() string {
+	var values []string
+	for _, val := range e.Values {
+		values = append(values, val.FormattedValue)
+	}
+
+	return strings.Join(values, "; ")
+}
+
+func FormatLDAPAttribute(attr *ldap.EntryAttribute, timeFormat string, timeOffset int) FormattedAttr {
+	var formattedEntries []string
+	var formattedAttrValues []FormattedAttrValue
+
+	if len(attr.Values) < 1 {
+		// This should never happen (?)
+		return FormattedAttr{[]FormattedAttrValue{{OriginalValue: "(Empty)", FormattedValue: "(Empty)"}}}
+	}
+
+	/* Special parsing for bitset expansions */
+	if attr.Name == "userAccountControl" || attr.Name == "systemFlags" {
+		switch attr.Name {
+		case "userAccountControl":
+			uacInt, err := strconv.Atoi(attr.Values[0])
+			if err == nil {
+				formattedEntries = ParseUACFlags(uacInt)
+			}
+		case "systemFlags":
+			intValue, err := strconv.ParseInt(attr.Values[0], 10, 64)
+			if err == nil {
+				formattedEntries = ParseSystemFlags(uint32(intValue))
+			}
+		}
+
+		for _, x := range formattedEntries {
+			formattedAttrValues = append(formattedAttrValues, FormattedAttrValue{
+				OriginalValue:  attr.Values[0],
+				FormattedValue: x,
+			})
+		}
+
+		return FormattedAttr{formattedAttrValues}
+	}
+
+	// Regular parsing for other attributes
 	for idx, val := range attr.Values {
+		// Format the value
+		var formattedEntry string
 		switch attr.Name {
 		case "objectSid":
-			formattedEntries = []string{"SID{" + ConvertSID(hex.EncodeToString(attr.ByteValues[idx])) + "}"}
+			formattedEntry = "SID{" + ConvertSID(hex.EncodeToString(attr.ByteValues[idx])) + "}"
 		case "objectGUID", "schemaIDGUID":
-			formattedEntries = []string{"GUID{" + ConvertGUID(hex.EncodeToString(attr.ByteValues[idx])) + "}"}
+			formattedEntry = "GUID{" + ConvertGUID(hex.EncodeToString(attr.ByteValues[idx])) + "}"
 		case "whenCreated", "whenChanged":
-			formattedEntries = []string{
-				FormatLDAPTime(val, timeFormat, timeOffset),
-			}
+			formattedEntry = FormatLDAPTime(val, timeFormat, timeOffset)
 		case "lastLogonTimestamp", "accountExpires", "badPasswordTime", "lastLogoff", "lastLogon", "pwdLastSet", "creationTime", "lockoutTime":
-			if val == "0" {
-				return []string{"(Never)"}
-			}
-
-			if attr.Name == "accountExpires" && val == "9223372036854775807" {
-				return []string{"(Never Expire)"}
-			}
-
-			formattedEntries = []string{
-				FormatLDAPTime2(val, timeFormat, timeOffset),
-			}
-		case "userAccountControl":
-			uacInt, _ := strconv.Atoi(val)
-
-			formattedEntries = []string{}
-
-			uacFlagKeys := make([]int, 0)
-			for k := range UacFlags {
-				uacFlagKeys = append(uacFlagKeys, k)
-			}
-			sort.Ints(uacFlagKeys)
-
-			for _, flag := range uacFlagKeys {
-				curFlag := UacFlags[flag]
-				if uacInt&flag != 0 {
-					if curFlag.Present != "" {
-						formattedEntries = append(formattedEntries, curFlag.Present)
-					}
-				} else {
-					if curFlag.NotPresent != "" {
-						formattedEntries = append(formattedEntries, curFlag.NotPresent)
-					}
-				}
+			if val == "0" || (attr.Name == "accountExpires" && val == "9223372036854775807") {
+				formattedEntry = "(Never)"
+			} else {
+				formattedEntry = FormatLDAPTime2(val, timeFormat, timeOffset)
 			}
 		case "primaryGroupID":
 			rId, _ := strconv.Atoi(val)
@@ -236,7 +347,7 @@ func FormatLDAPAttribute(attr *ldap.EntryAttribute, timeFormat string, timeOffse
 			groupName, ok := RidMap[rId]
 
 			if ok {
-				formattedEntries = []string{groupName}
+				formattedEntry = groupName
 			}
 		case "sAMAccountType":
 			sAMAccountTypeId, _ := strconv.Atoi(val)
@@ -244,32 +355,63 @@ func FormatLDAPAttribute(attr *ldap.EntryAttribute, timeFormat string, timeOffse
 			accountType, ok := SAMAccountTypeMap[sAMAccountTypeId]
 
 			if ok {
-				formattedEntries = []string{accountType}
+				formattedEntry = accountType
 			}
 		case "groupType":
 			groupTypeId, _ := strconv.Atoi(val)
 			groupType, ok := GroupTypeMap[groupTypeId]
 
 			if ok {
-				formattedEntries = []string{groupType}
+				formattedEntry = groupType
 			}
 		case "instanceType":
 			instanceTypeId, _ := strconv.Atoi(val)
 			instanceType, ok := InstanceTypeMap[instanceTypeId]
 
 			if ok {
-				formattedEntries = []string{instanceType}
+				formattedEntry = instanceType
 			}
-		case "logonHours":
-			if len(attr.ByteValues[idx]) != 21 {
-				formattedEntries = []string{"(Invalid logonHours length)"}
-			} else {
-				formattedEntries = []string{"HEX{" + hex.EncodeToString(attr.ByteValues[idx]) + "}"}
+		case "logonHours", "dSASignature":
+			formattedEntry = "HEX{" + hex.EncodeToString(attr.ByteValues[idx]) + "}"
+		case "msDS-MaximumPasswordAge", "msDS-MinimumPasswordAge", "msDS-LockoutDuration", "msDS-LockoutObservationWindow", "lockoutDuration", "lockOutObservationWindow", "maxPwdAge", "minPwdAge", "forceLogoff", "msDS-UserTGTLifetime", "msDS-ComputerTGTLifetime", "msDS-ServiceTGTLifetime":
+			duration, err := ParseMSDuration(val)
+			if err == nil {
+				if attr.Name == "forceLogoff" {
+					switch val {
+					case "0":
+						formattedEntry = "(Instantly)"
+					case "-9223372036854775808":
+						formattedEntry = "(Never)"
+					default:
+						formattedEntry = FormatDuration(duration)
+					}
+				} else {
+					if (duration / time.Second) == 0 {
+						formattedEntry = "(None)"
+					} else {
+						formattedEntry = FormatDuration(duration)
+					}
+				}
 			}
-		default:
-			formattedEntries = attr.Values
+		case "lockoutThreshold", "msDS-LockoutThreshold", "minPwdLength", "msDS-MinimumPasswordLength":
+			intValue, err := strconv.ParseInt(val, 10, 64)
+			if err == nil {
+				if intValue == 0 {
+					formattedEntry = "(None)"
+				}
+			}
 		}
+
+		// Append the formatted entry, or the original value if no formatting was applied
+		if formattedEntry == "" {
+			formattedEntry = val
+		}
+
+		formattedAttrValues = append(formattedAttrValues, FormattedAttrValue{
+			OriginalValue:  val,
+			FormattedValue: formattedEntry,
+		})
 	}
 
-	return formattedEntries
+	return FormattedAttr{formattedAttrValues}
 }

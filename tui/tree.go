@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -16,6 +17,32 @@ import (
 )
 
 var selectedAttrName string
+
+var ATTRS_DISALLOWED_DELETION_FORMATTED = []string{
+	"userAccountControl",
+	"systemFlags",
+}
+
+var HIDDEN_REF_FLAG = "[HIDDEN]"
+
+func truncateEllipsis(s string, maxLen int) string {
+	if maxLen < 0 {
+		return ""
+	}
+
+	runes := []rune(s)
+
+	if len(runes) <= maxLen {
+		return s
+	}
+
+	truncatedLen := maxLen - 3
+	if truncatedLen < 0 {
+		truncatedLen = 0
+	}
+	truncatedRunes := runes[:truncatedLen]
+	return string(truncatedRunes) + "..."
+}
 
 func storeAnchoredAttribute(attrsPanel *tview.Table) func(row, column int) {
 	return func(row, column int) {
@@ -238,6 +265,7 @@ func handleAttrsKeyCtrlE(currentNode *tview.TreeNode, attrsPanel *tview.Table, c
 	writeAttrValsForm.SetTitle("Attribute Editor").SetBorder(true)
 	app.SetRoot(writeAttrValsForm, true).SetFocus(writeAttrValsForm)
 }
+
 func handleAttrsKeyDelete(currentNode *tview.TreeNode, attrsPanel *tview.Table, cache *EntryCache) {
 	currentFocus := app.GetFocus()
 	baseDN := currentNode.GetReference().(string)
@@ -245,17 +273,16 @@ func handleAttrsKeyDelete(currentNode *tview.TreeNode, attrsPanel *tview.Table, 
 	attrRow, attrCol := attrsPanel.GetSelection()
 	attrName := attrsPanel.GetCell(attrRow, 0).Text
 	attrNameRef := attrsPanel.GetCell(attrRow, 0).GetReference().(string)
-	attrValue := attrsPanel.GetCell(attrRow, 1).Text
 
 	promptModal := tview.NewModal()
 	if attrCol == 0 && attrName != "" {
 		// Deleting entire attribute
 		promptModal.
-			SetText("Do you really want to delete attribute `" + attrName + "` of this object?\n" + baseDN).
+			SetText("Do you really want to delete attribute `" + attrNameRef + "` of this object?\n" + baseDN).
 			AddButtons([]string{"No", "Yes"}).
 			SetDoneFunc(func(buttonIndex int, buttonLabel string) {
 				if buttonLabel == "Yes" {
-					err := lc.DeleteAttribute(baseDN, attrName)
+					err := lc.DeleteAttribute(baseDN, attrNameRef)
 					if err != nil {
 						updateLog(fmt.Sprint(err), "red")
 					} else {
@@ -269,19 +296,34 @@ func handleAttrsKeyDelete(currentNode *tview.TreeNode, attrsPanel *tview.Table, 
 				app.SetRoot(appPanel, true).SetFocus(currentFocus)
 			})
 	} else {
-		// Deleting specific attribute value
+		if slices.Contains(ATTRS_DISALLOWED_DELETION_FORMATTED, attrNameRef) && FormatAttrs {
+			updateLog("Deletion of attribute values for '"+attrNameRef+"' is not allowed when FormatAttrs is enabled, as it is a bitset.", "yellow")
+			return
+		}
+
+		attrValueRef, ok := attrsPanel.GetCell(attrRow, 1).GetReference().(string)
+		if !ok {
+			updateLog("Please enable ExpandAttrs to delete specific attribute values, or delete the attribute itself.", "yellow")
+			return
+		}
+
+		if attrValueRef == HIDDEN_REF_FLAG {
+			updateLog("Please expand the hidden entries to delete specific values.", "yellow")
+			return
+		}
+
 		promptModal.
-			SetText("Do you really want to delete this value from this attribute?\nValue: " + attrValue + "\nAttribute: " + attrNameRef + "\nObject: " + baseDN).
+			SetText("Do you really want to delete this value from this attribute?\nValue: " + truncateEllipsis(attrValueRef, 64) + "\nAttribute: " + attrNameRef + "\nObject: " + baseDN).
 			AddButtons([]string{"No", "Yes"}).
 			SetDoneFunc(func(buttonIndex int, buttonLabel string) {
 				if buttonLabel == "Yes" {
-					err := lc.DeleteAttributeValues(baseDN, attrNameRef, []string{attrValue})
+					err := lc.DeleteAttributeValues(baseDN, attrNameRef, []string{attrValueRef})
 					if err != nil {
 						updateLog(fmt.Sprint(err), "red")
 					} else {
 						cache.Delete(baseDN)
 						reloadAttributesPanel(currentNode, attrsPanel, false, cache)
-						updateLog("Value deleted: "+attrValue+" from attribute "+attrNameRef, "green")
+						updateLog("Value "+truncateEllipsis(attrValueRef, 64)+" deleted from attribute "+attrNameRef, "green")
 					}
 				}
 				app.SetRoot(appPanel, true).SetFocus(currentFocus)
@@ -299,16 +341,30 @@ func handleAttrsKeyCtrlN(currentNode *tview.TreeNode, attrsPanel *tview.Table, c
 
 	baseDN := currentNode.GetReference().(string)
 
+	useHexEncoding := false
+
 	createAttrForm.
 		AddTextView("Object DN", baseDN, 0, 1, false, true).
 		AddInputField("Attribute Name", "", 20, nil, nil).
 		AddInputField("Attribute Value", "", 20, nil, nil).
+		AddCheckbox("Use HEX encoding", false, func(checked bool) {
+			useHexEncoding = checked
+		}).
 		AddButton("Go Back", func() {
 			app.SetRoot(appPanel, false).SetFocus(currentFocus)
 		}).
 		AddButton("Create", func() {
 			attrName := createAttrForm.GetFormItemByLabel("Attribute Name").(*tview.InputField).GetText()
 			attrVal := createAttrForm.GetFormItemByLabel("Attribute Value").(*tview.InputField).GetText()
+
+			if useHexEncoding {
+				attrValBytes, err := hex.DecodeString(attrVal)
+				if err != nil {
+					updateLog(fmt.Sprint(err), "red")
+					return
+				}
+				attrVal = string(attrValBytes)
+			}
 
 			err := lc.AddAttribute(baseDN, attrName, []string{attrVal})
 			if err != nil {
@@ -350,7 +406,7 @@ func handleAttrsKeyEnter(currentNode *tview.TreeNode, attrsPanel *tview.Table, c
 	selectedRow, selectedCol := attrsPanel.GetSelection()
 	selectedCell := attrsPanel.GetCell(selectedRow, selectedCol)
 	selectedCellRef := selectedCell.GetReference().(string)
-	if selectedCellRef == "[HIDDEN]" {
+	if selectedCellRef == HIDDEN_REF_FLAG {
 		// Get the attribute name from the reference of the first cell in this row
 		attrName := attrsPanel.GetCell(selectedRow, 0).GetReference().(string)
 
@@ -359,22 +415,31 @@ func handleAttrsKeyEnter(currentNode *tview.TreeNode, attrsPanel *tview.Table, c
 		entry, _ := cache.Get(baseDN)
 
 		// Get all values for this attribute
-		attribute := entry.GetAttributeValues(attrName)
+		attributes := entry.Attributes
+		var attribute *ldap.EntryAttribute
+		for _, attr := range attributes {
+			if attr.Name == attrName {
+				attribute = attr
+				break
+			}
+		}
+
+		fmtValues := ldaputils.FormatLDAPAttribute(attribute, TimeFormat, TimeOffset)
 
 		// Remove the "[entries hidden]" row
 		attrsPanel.RemoveRow(selectedRow)
 
 		// Add all remaining values starting from AttrLimit
 		currentRow := selectedRow
-		for i := AttrLimit; i < len(attribute); i++ {
+		for i := AttrLimit; i < len(fmtValues.Values); i++ {
 			attrsPanel.InsertRow(currentRow)
 			attrsPanel.SetCell(currentRow, 0, tview.NewTableCell("").SetReference(attrName))
 
-			cellValue := attribute[i]
-			myCell := tview.NewTableCell(cellValue).SetReference(attrName)
+			cellValue := fmtValues.Values[i]
+			myCell := tview.NewTableCell(cellValue.FormattedValue).SetReference(cellValue.OriginalValue)
 
 			if Colors {
-				color, ok := GetAttrCellColor(attrName, cellValue)
+				color, ok := GetAttrCellColor(attrName, cellValue.OriginalValue)
 				if ok {
 					myCell.SetTextColor(tcell.GetColor(color))
 				}
@@ -452,6 +517,15 @@ func attrsPanelKeyHandler(event *tcell.EventKey, currentNode *tview.TreeNode, ca
 	return event
 }
 
+func insertEntriesHiddenRow(attrsTable *tview.Table, row int, entriesHidden int, cellName string) {
+	attrsTable.SetCell(row, 0, tview.NewTableCell("").SetReference(cellName))
+	attrsTable.SetCell(row, 1,
+		tview.NewTableCell(
+			fmt.Sprintf("[%d entries hidden]", entriesHidden),
+		).SetReference(HIDDEN_REF_FLAG),
+	)
+}
+
 func reloadAttributesPanel(node *tview.TreeNode, attrsTable *tview.Table, useCache bool, cache *EntryCache) error {
 	ref := node.GetReference()
 	if ref == nil {
@@ -494,78 +568,76 @@ func reloadAttributesPanel(node *tview.TreeNode, attrsTable *tview.Table, useCac
 
 	row := 0
 	for _, attribute := range attributes {
+		var myCell *tview.TableCell
 		var cellName string = attribute.Name
-
-		var cellValues []string
-
-		attrsTable.SetCell(row, 0, tview.NewTableCell(cellName).SetReference(cellName))
+		var fmtAttrs ldaputils.FormattedAttr
 
 		if FormatAttrs {
-			cellValues = ldaputils.FormatLDAPAttribute(attribute, TimeFormat, TimeOffset)
+			fmtAttrs = ldaputils.FormatLDAPAttribute(attribute, TimeFormat, TimeOffset)
 		} else {
-			cellValues = attribute.Values
+			for _, val := range attribute.Values {
+				fmtAttrs.Values = append(
+					fmtAttrs.Values,
+					ldaputils.FormattedAttrValue{
+						OriginalValue:  val,
+						FormattedValue: val,
+					},
+				)
+			}
 		}
 
+		// Fill values of this attribute without expanding
 		if !ExpandAttrs {
-			myCell := tview.NewTableCell(strings.Join(cellValues, "; ")).SetReference(cellName)
+			myCell = tview.NewTableCell(fmtAttrs.ValuesStr())
+			myCell.SetReference(nil)
 
 			if Colors {
-				color, ok := GetAttrCellColor(cellName, attribute.Values[0])
+				color, ok := GetAttrCellColor(cellName, fmtAttrs.Values[0].OriginalValue)
 				if ok {
 					myCell.SetTextColor(tcell.GetColor(color))
 				}
 			}
 
+			attrsTable.SetCell(row, 0, tview.NewTableCell(cellName).SetReference(cellName))
 			attrsTable.SetCell(row, 1, myCell)
 			row = row + 1
 			continue
 		}
 
-		for idx, cellValue := range cellValues {
-			myCell := tview.NewTableCell(cellValue).SetReference(cellName)
+		// Fill values of this attribute handling expansion
+		numAttrs := len(fmtAttrs.Values)
+		for idx, cellValue := range fmtAttrs.Values {
+			myCell = tview.NewTableCell(cellValue.FormattedValue).SetReference(cellValue.OriginalValue)
 
 			if Colors {
-				var refValue string
-				if !ExpandAttrs || len(cellValues) == 1 {
-					if idx < len(attribute.Values) {
-						refValue = attribute.Values[idx]
-					} else {
-						refValue = cellValue
-					}
-				} else {
-					refValue = cellValue
-				}
-
-				color, ok := GetAttrCellColor(cellName, refValue)
+				color, ok := GetAttrCellColor(cellName, cellValue.OriginalValue)
 
 				if ok {
 					myCell.SetTextColor(tcell.GetColor(color))
 				}
 			}
 
-			if idx == 0 {
+			if AttrLimit == -1 || idx < AttrLimit {
+				// If within the attributes limit...
+				if idx == 0 {
+					// If it's the first row, show the attribute name...
+					attrsTable.SetCell(row, 0, tview.NewTableCell(cellName).SetReference(cellName))
+				} else {
+					// Otherwise, leave the attribute name cell empty
+					attrsTable.SetCell(row, 0, tview.NewTableCell("").SetReference(cellName))
+				}
 				attrsTable.SetCell(row, 1, myCell)
-			} else {
-				if ExpandAttrs {
-					entriesHidden := len(cellValues) - AttrLimit
-					if AttrLimit == -1 || idx < AttrLimit {
-						attrsTable.SetCell(row, 0, tview.NewTableCell("").SetReference(cellName))
-						attrsTable.SetCell(row, 1, myCell)
-						if entriesHidden > 0 && idx == AttrLimit-1 {
-							attrsTable.SetCell(row+1, 0, tview.NewTableCell("").SetReference(cellName))
-							attrsTable.SetCell(row+1, 1,
-								tview.NewTableCell(
-									fmt.Sprintf("[%d entries hidden]", entriesHidden),
-								).SetReference("[HIDDEN]"),
-							)
-							row = row + 2
-							break
-						}
-					}
+
+				// If this is the last row that can be shown, and there are more entries, add the "[entries hidden]" row
+				entriesHidden := numAttrs - AttrLimit
+				if entriesHidden > 0 && idx == AttrLimit-1 {
+					insertEntriesHiddenRow(attrsTable, row+1, entriesHidden, cellName)
+					row += 2
+					break
 				}
 			}
 
-			row = row + 1
+			row++
 		}
 	}
 
@@ -575,15 +647,17 @@ func reloadAttributesPanel(node *tview.TreeNode, attrsTable *tview.Table, useCac
 	}()
 	return nil
 }
+
 func sortAttributes(attrs []*ldap.EntryAttribute) []*ldap.EntryAttribute {
 	sortedAttrs := make([]*ldap.EntryAttribute, len(attrs))
 	copy(sortedAttrs, attrs)
 
-	if AttrSort == "asc" {
+	switch AttrSort {
+	case "asc":
 		sort.Slice(sortedAttrs, func(i, j int) bool {
 			return sortedAttrs[i].Name <= sortedAttrs[j].Name
 		})
-	} else if AttrSort == "desc" {
+	case "desc":
 		sort.Slice(sortedAttrs, func(i, j int) bool {
 			return sortedAttrs[i].Name > sortedAttrs[j].Name
 		})
@@ -622,7 +696,7 @@ func getDN(entry *ldap.Entry) string {
 		}
 	}
 
-	return dn
+	return strings.ToUpper(dn)
 }
 
 func getNodeName(entry *ldap.Entry) string {
@@ -649,17 +723,19 @@ func getNodeName(entry *ldap.Entry) string {
 		emojisPrefix = ldaputils.EmojiMap["container"]
 	}
 
-	if Emojis {
-		return emojisPrefix + entryMarker.ReplaceAllString(getName(entry), "")
+	dn := getDN(entry)
+
+	finalName := strings.TrimPrefix(strings.ReplaceAll(dn, ",DC=", "."), "DC=")
+	if !isDomain {
+		finalName = entryMarker.ReplaceAllString(getName(entry), "")
 	}
 
-	dn := getDN(entry)
-	if isDomain {
-		return dn
+	if Emojis {
+		return emojisPrefix + finalName
 	}
 
 	dnParts := strings.Split(dn, ",")
-	if len(dnParts) > 0 {
+	if len(dnParts) > 0 && !strings.HasPrefix(dn, "DC=") {
 		return dnParts[0]
 	}
 
@@ -753,7 +829,7 @@ func reloadExplorerPage() {
 	explorerAttrsPanel.Clear()
 	explorerCache.Clear()
 
-	rootNode = renderPartialTree(lc.RootDN, SearchFilter)
+	rootNode = renderPartialTree(explorerBaseDN, SearchFilter)
 	if rootNode != nil {
 		numChildren := len(rootNode.GetChildren())
 		updateLog("Tree updated successfully ("+strconv.Itoa(numChildren)+" objects found)", "green")

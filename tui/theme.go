@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Macmod/godap/v2/pkg/ldaputils"
 	"github.com/gdamore/tcell/v2"
 	"github.com/go-ldap/ldap/v3"
 	"github.com/rivo/tview"
@@ -84,12 +85,14 @@ func assignDropDownTheme(dropdown *tview.DropDown) {
 	dropdown.SetFieldBackgroundColor(DefaultTheme.FieldBackgroundColor)
 }
 
+/*
 func assignFormTheme(form *tview.Form) {
 	form.
 		SetButtonBackgroundColor(DefaultTheme.FormButtonBackgroundColor).
 		SetButtonTextColor(DefaultTheme.FormButtonTextColor).
 		SetButtonActivatedStyle(DefaultTheme.FormButtonActivatedStyle)
 }
+*/
 
 // Form customizations
 type XForm struct {
@@ -261,6 +264,103 @@ func GetAttrCellColor(cellName string, cellValue string) (string, bool) {
 			if daysDiff <= 7 {
 				color = "green"
 			} else if daysDiff <= 90 {
+				color = "yellow"
+			} else {
+				color = "red"
+			}
+		}
+	case "lockoutDuration", "msDS-LockoutDuration", "lockOutObservationWindow", "msDS-LockoutObservationWindow":
+		duration, err := ldaputils.ParseMSDuration(cellValue)
+		if err == nil {
+			if duration <= 5*60*time.Second {
+				color = "green"
+			} else if duration <= 30*60*time.Second {
+				color = "yellow"
+			} else {
+				color = "red"
+			}
+		}
+	case "maxPwdAge", "msDS-MaximumPasswordAge":
+		duration, err := ldaputils.ParseMSDuration(cellValue)
+		if err == nil {
+			if duration <= 30*24*time.Hour {
+				color = "red"
+			} else if duration <= 90*24*time.Hour {
+				color = "yellow"
+			} else {
+				color = "green"
+			}
+		}
+	case "minPwdAge", "msDS-MinimumPasswordAge":
+		duration, err := ldaputils.ParseMSDuration(cellValue)
+		if err == nil {
+			if duration == 0*time.Second {
+				color = "green"
+			} else if duration <= 1*24*time.Hour {
+				color = "yellow"
+			} else {
+				color = "red"
+			}
+		}
+	case "forceLogoff":
+		duration, err := ldaputils.ParseMSDuration(cellValue)
+		if err == nil {
+			if duration == 0*time.Second {
+				color = "red"
+			} else if duration <= 2*time.Hour {
+				color = "yellow"
+			} else {
+				color = "green"
+			}
+		}
+	case "msDS-UserTGTLifetime", "msDS-ComputerTGTLifetime", "msDS-ServiceTGTLifetime":
+		duration, err := ldaputils.ParseMSDuration(cellValue)
+		if err == nil {
+			if duration >= 24*time.Hour {
+				color = "green"
+			} else if duration >= 4*time.Hour {
+				color = "yellow"
+			} else {
+				color = "red"
+			}
+		}
+	case "lockoutThreshold", "msDS-LockoutThreshold":
+		intValue, err := strconv.ParseInt(cellValue, 10, 64)
+		if err == nil {
+			if intValue == 0 {
+				color = "green"
+			} else if intValue < 5 {
+				color = "red"
+			} else {
+				color = "yellow"
+			}
+		}
+	case "minPwdLength", "msDS-MinimumPasswordLength":
+		intValue, err := strconv.ParseInt(cellValue, 10, 64)
+		if err == nil {
+			if intValue >= 12 {
+				color = "red"
+			} else if intValue >= 8 {
+				color = "yellow"
+			} else {
+				color = "green"
+			}
+		}
+	case "badPwdCount":
+		intValue, err := strconv.ParseInt(cellValue, 10, 64)
+		if err == nil {
+			if intValue > 0 {
+				color = "yellow"
+			} else {
+				color = "green"
+			}
+		}
+	case "logonCount":
+		intValue, err := strconv.ParseInt(cellValue, 10, 64)
+		if err == nil {
+			if intValue >= 10 {
+				color = "green"
+			} else if intValue > 0 {
 				color = "yellow"
 			} else {
 				color = "red"

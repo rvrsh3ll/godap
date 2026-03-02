@@ -14,6 +14,9 @@ import (
 	"github.com/rivo/tview"
 )
 
+var searchBaseDN string
+var searchScope int
+
 var (
 	searchTreePanel  *tview.TreeView
 	searchQueryPanel *tview.InputField
@@ -34,11 +37,13 @@ var (
 type SearchHistoryEntry struct {
 	Timestamp time.Time
 	Query     string
+	BaseDN    string
+	Scope     int
 	Duration  time.Duration
 	Results   int
 }
 
-func addToSearchHistory(query string, duration time.Duration, results int) {
+func addToSearchHistory(query string, baseDN string, scope int, duration time.Duration, results int) {
 	// Don't add empty queries to history
 	if query == "" {
 		return
@@ -47,6 +52,8 @@ func addToSearchHistory(query string, duration time.Duration, results int) {
 	entry := SearchHistoryEntry{
 		Timestamp: time.Now(),
 		Query:     query,
+		BaseDN:    baseDN,
+		Scope:     scope,
 		Duration:  duration,
 		Results:   results,
 	}
@@ -91,6 +98,14 @@ func updateSearchHistoryPanel() {
 	searchHistoryPanel.SetCell(0, 1, tview.NewTableCell("Duration").SetSelectable(false))
 	searchHistoryPanel.SetCell(0, 2, tview.NewTableCell("Results").SetSelectable(false))
 	searchHistoryPanel.SetCell(0, 3, tview.NewTableCell("Query").SetSelectable(false))
+	searchHistoryPanel.SetCell(0, 4, tview.NewTableCell("BaseDN").SetSelectable(false))
+	searchHistoryPanel.SetCell(0, 5, tview.NewTableCell("Scope").SetSelectable(false))
+
+	scopeNames := map[int]string{
+		ldap.ScopeWholeSubtree: "WholeSubtree",
+		ldap.ScopeSingleLevel:  "SingleLevel",
+		ldap.ScopeBaseObject:   "BaseObject",
+	}
 
 	for i, entry := range searchHistoryEntries {
 		row := i + 1
@@ -98,11 +113,14 @@ func updateSearchHistoryPanel() {
 		timestamp := entry.Timestamp.Format(TimeFormat)
 		duration := fmt.Sprintf("%.4fs", entry.Duration.Seconds())
 		results := strconv.Itoa(entry.Results)
+		scopeName := scopeNames[entry.Scope]
 
 		searchHistoryPanel.SetCell(row, 0, tview.NewTableCell(timestamp))
 		searchHistoryPanel.SetCell(row, 1, tview.NewTableCell(duration))
 		searchHistoryPanel.SetCell(row, 2, tview.NewTableCell(results))
 		searchHistoryPanel.SetCell(row, 3, tview.NewTableCell(entry.Query))
+		searchHistoryPanel.SetCell(row, 4, tview.NewTableCell(entry.BaseDN))
+		searchHistoryPanel.SetCell(row, 5, tview.NewTableCell(scopeName))
 	}
 }
 
@@ -114,9 +132,12 @@ func initSearchPage() {
 	searchQueryPanel = tview.NewInputField()
 	searchQueryPanel.
 		SetPlaceholder("Type an LDAP search filter or the name of an object").
-		SetTitle("Search Filter (Recursive)").
+		SetTitle("Search Filter").
 		SetBorder(true)
 	assignInputFieldTheme(searchQueryPanel)
+
+	searchBaseDN = lc.DefaultRootDN
+	searchScope = ldap.ScopeWholeSubtree
 
 	tabs := tview.NewTextView().
 		SetTextAlign(tview.AlignCenter).
@@ -209,7 +230,7 @@ func initSearchPage() {
 		for _, val := range children {
 			childNode.AddChild(
 				tview.NewTreeNode(val.Title).
-					SetReference(val.Filter).
+					SetReference(val).
 					SetSelectable(true))
 		}
 
@@ -226,7 +247,16 @@ func initSearchPage() {
 			}
 			runControl.Unlock()
 
-			searchQueryDoneHandler(tcell.KeyEnter)
+			overrideBaseDN := ""
+			ref := node.GetReference()
+			if ref != nil {
+				libQuery := ref.(ldaputils.LibQuery)
+				if libQuery.BaseDN != "" {
+					overrideBaseDN = strings.Replace(libQuery.BaseDN, "DC=domain,DC=com", lc.DefaultRootDN, -1)
+				}
+			}
+
+			executeSearch(overrideBaseDN)
 		},
 	)
 
@@ -244,7 +274,8 @@ func initSearchPage() {
 			lastDayTimestampStr := strconv.FormatInt(nowTimestamp-86400, 10)
 			lastMonthTimestampStr := strconv.FormatInt(nowTimestamp-2592000, 10)
 
-			editedQuery := strings.Replace(ref.(string), "DC=domain,DC=com", lc.DefaultRootDN, -1)
+			libQuery := ref.(ldaputils.LibQuery)
+			editedQuery := strings.Replace(libQuery.Filter, "DC=domain,DC=com", lc.DefaultRootDN, -1)
 			editedQuery = strings.Replace(editedQuery, "<timestamp>", nowTimestampStr, -1)
 			editedQuery = strings.Replace(editedQuery, "<timestamp1d>", lastDayTimestampStr, -1)
 			editedQuery = strings.Replace(editedQuery, "<timestamp30d>", lastMonthTimestampStr, -1)
@@ -367,9 +398,21 @@ func initSearchPage() {
 }
 
 func searchQueryDoneHandler(key tcell.Key) {
+	executeSearch("")
+}
+
+func executeSearch(overrideBaseDN string) {
 	updateLog("Performing recursive query...", "yellow")
 
-	rootNode := tview.NewTreeNode(lc.DefaultRootDN).SetSelectable(true)
+	baseDN := overrideBaseDN
+	if baseDN == "" {
+		baseDN = searchBaseDN
+		if baseDN == "" {
+			baseDN = lc.DefaultRootDN
+		}
+	}
+
+	rootNode := tview.NewTreeNode(baseDN).SetSelectable(true)
 	searchTreePanel.
 		SetRoot(rootNode).
 		SetCurrentNode(rootNode)
@@ -397,20 +440,30 @@ func searchQueryDoneHandler(key tcell.Key) {
 
 		startTime := time.Now()
 
-		entries, _ := lc.Query(lc.DefaultRootDN, searchQuery, ldap.ScopeWholeSubtree, Deleted)
+		entries, _ := lc.Query(baseDN, searchQuery, searchScope, Deleted)
 
 		duration := time.Since(startTime)
 
 		firstLeaf := true
 
 		for _, entry := range entries {
-			if entry.DN == lc.DefaultRootDN {
+			if entry.DN == baseDN {
+				// The result IS the root node itself.
+				// Set reference and reload attrs directly — SetCurrentNode won't
+				// fire ChangedFunc because rootNode is already the selected node.
+				app.QueueUpdateDraw(func() {
+					rootNode.SetReference(entry.DN)
+					rootNode.SetText(getNodeName(entry))
+					searchCache.Add(entry.DN, entry)
+					searchAttrsPanel.Clear()
+					reloadSearchAttrsPanel(rootNode, true)
+				})
 				continue
 			}
 
 			var nodeName string
 			entryName := getNodeName(entry)
-			dnPath := strings.TrimSuffix(entry.DN, ","+lc.DefaultRootDN)
+			dnPath := strings.TrimSuffix(entry.DN, ","+baseDN)
 
 			components := strings.Split(dnPath, ",")
 			currentNode := searchTreePanel.GetRoot()
@@ -465,7 +518,7 @@ func searchQueryDoneHandler(key tcell.Key) {
 				fmt.Sprintf("Query completed (%d objects found in %.4fs)", len(entries), duration.Seconds()), "green")
 		})
 
-		addToSearchHistory(searchQuery, duration, len(entries))
+		addToSearchHistory(searchQuery, baseDN, searchScope, duration, len(entries))
 		app.QueueUpdateDraw(func() {
 			updateSearchHistoryPanel()
 		})
@@ -474,6 +527,53 @@ func searchQueryDoneHandler(key tcell.Key) {
 		running = false
 		runControl.Unlock()
 	}()
+}
+
+func openSearchBaseDNForm() {
+	currentFocus := app.GetFocus()
+
+	scopeOptions := []string{"WholeSubtree", "SingleLevel", "BaseObject"}
+	scopeValues := []int{ldap.ScopeWholeSubtree, ldap.ScopeSingleLevel, ldap.ScopeBaseObject}
+	currentScopeIdx := 0
+	for i, v := range scopeValues {
+		if v == searchScope {
+			currentScopeIdx = i
+			break
+		}
+	}
+
+	baseDNField := tview.NewInputField().
+		SetLabel("Base DN").
+		SetText(searchBaseDN)
+	assignInputFieldTheme(baseDNField)
+
+	selectedScopeIdx := currentScopeIdx
+
+	form := NewXForm()
+	form.
+		AddFormItem(baseDNField).
+		AddDropDown("Scope", scopeOptions, currentScopeIdx, func(_ string, idx int) {
+			selectedScopeIdx = idx
+		}).
+		AddButton("Go Back", func() {
+			app.SetRoot(appPanel, true).SetFocus(currentFocus)
+		}).
+		AddButton("Set", func() {
+			searchBaseDN = baseDNField.GetText()
+			searchScope = scopeValues[selectedScopeIdx]
+			updateLog("Search settings updated.", "green")
+			app.SetRoot(appPanel, true).SetFocus(currentFocus)
+		})
+
+	form.SetTitle("Search Settings").SetBorder(true)
+	form.SetInputCapture(handleEscape(currentFocus))
+
+	centeredForm := tview.NewGrid().
+		SetColumns(0, 60, 0).
+		SetRows(0, 9, 0).
+		AddItem(form, 1, 1, 1, 1, 0, 0, true)
+
+	app.SetRoot(centeredForm, true).SetFocus(form)
 }
 
 func searchPageKeyHandler(event *tcell.EventKey) *tcell.EventKey {
@@ -485,6 +585,8 @@ func searchPageKeyHandler(event *tcell.EventKey) *tcell.EventKey {
 	switch event.Key() {
 	case tcell.KeyCtrlF:
 		openFinder(&searchCache, "Object Search")
+	case tcell.KeyCtrlB:
+		openSearchBaseDNForm()
 	}
 
 	return event

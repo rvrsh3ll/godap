@@ -22,8 +22,8 @@ var (
 	extendedVals                []string
 	attributesVals              []string
 	validatedWriteRightsVals    []string
-	rights                      map[string]int = sdl.AccessRightsMap
-	normalRights                map[string]int
+	rights                      map[string]uint32 = sdl.AccessRightsMap
+	normalRights                map[string]uint32
 	normalRightsVals            []string
 
 	// UI stuff
@@ -38,7 +38,7 @@ var (
 )
 
 func loadRightVars() {
-	normalRights = map[string]int{
+	normalRights = map[string]uint32{
 		// List object is usually hidden from AD,
 		// but should be included for completeness
 		"List contents":            rights["RIGHT_DS_LIST_CONTENTS"],
@@ -171,7 +171,7 @@ func getFlags(objectGuid string, inheritedGuid string) int {
 	return flags
 }
 
-func createOrUpdateAce(aceIdx int, newAllowOrDeny bool, newACEFlags int, newMask int, newObjectGuid string, newInheritedGuid string, newPrincipalSID string) {
+func createOrUpdateAce(aceIdx int, newAllowOrDeny bool, newACEFlags int, newMask uint32, newObjectGuid string, newInheritedGuid string, newPrincipalSID string) {
 	var newACEHeader *sdl.ACEHEADER = new(sdl.ACEHEADER)
 	var newACE sdl.ACEInt
 
@@ -292,7 +292,7 @@ func loadDeleteAceForm(aceIdx int) {
 }
 
 // Forms
-func getNormalPermsForm(mask int, checkedFull func(bool), checkedRight func(bool, int)) *tview.Form {
+func getNormalPermsForm(mask uint32, checkedFull func(bool), checkedRight func(bool, uint32)) *tview.Form {
 	form := NewXForm()
 
 	form.AddCheckbox("Full control", false, checkedFull)
@@ -378,7 +378,7 @@ func updateACEFlagsCell(table *tview.Table, newACEFlags int) {
 	table.SetCell(2, 1, tview.NewTableCell(fmt.Sprintf("%08b", newACEFlags)))
 }
 
-func updateMaskCell(table *tview.Table, newMask int) {
+func updateMaskCell(table *tview.Table, newMask uint32) {
 	cell := tview.NewTableCell(fmt.Sprintf("%032b", newMask))
 	if newMask == 0 {
 		cell.SetTextColor(tcell.GetColor("red"))
@@ -421,7 +421,7 @@ func loadAceEditorForm(aceIdx int) {
 		valKind          int
 		valType          int
 		valACEFlags      int
-		valMask          int
+		valMask          uint32
 		valFlags         int
 		valObjectGuid    string
 		valInheritedGuid string
@@ -440,7 +440,7 @@ func loadAceEditorForm(aceIdx int) {
 		selectedValidatedWriteRight int
 
 		// New values
-		newMask          int
+		newMask          uint32
 		newObjectGuid    string
 		newInheritedGuid string
 		newPrincipalSID  string
@@ -618,7 +618,7 @@ func loadAceEditorForm(aceIdx int) {
 
 							updateMaskCell(newAceTable, newMask)
 						},
-						func(checked bool, mask int) {
+						func(checked bool, mask uint32) {
 							if checked {
 								newMask |= mask
 							} else {
@@ -860,7 +860,7 @@ func loadAceEditorForm(aceIdx int) {
 
 	currentAceTable.SetCell(1, 1, tview.NewTableCell(strconv.Itoa(valType)))
 	currentAceTable.SetCell(2, 1, tview.NewTableCell(strconv.Itoa(valACEFlags)))
-	currentAceTable.SetCell(3, 1, tview.NewTableCell(strconv.Itoa(valMask)))
+	currentAceTable.SetCell(3, 1, tview.NewTableCell(strconv.FormatUint(uint64(valMask), 10)))
 	currentAceTable.SetCell(4, 1, tview.NewTableCell(strconv.Itoa(valFlags)))
 	currentAceTable.SetCell(5, 1, tview.NewTableCell(valObjectGuid))
 	currentAceTable.SetCell(6, 1, tview.NewTableCell(valInheritedGuid))
