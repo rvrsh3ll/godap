@@ -214,7 +214,11 @@ func updateGPOEntries() {
 		// Load all gpLinks
 		updateLog("Querying all gpLinks", "yellow")
 
-		gpLinkObjs, _ := lc.Query(lc.DefaultRootDN, "(gpLink=*)", ldap.ScopeWholeSubtree, false)
+		gpLinkObjs, err := lc.Query(lc.DefaultRootDN, "(gpLink=*)", ldap.ScopeWholeSubtree, false)
+		if err != nil {
+			handleLDAPError(err)
+			return
+		}
 
 		for _, gpLinkObj := range gpLinkObjs {
 			gpLinkVals := gpLinkObj.GetAttributeValue("gPLink")
@@ -243,7 +247,7 @@ func updateGPOEntries() {
 
 			updateLog("Querying for '"+gpoTargetQuery+"'", "yellow")
 			if err != nil {
-				updateLog(fmt.Sprint(err), "red")
+				handleLDAPError(err)
 				return
 			}
 
@@ -284,7 +288,7 @@ func updateGPOEntries() {
 
 		entries, err := lc.Query(lc.DefaultRootDN, gpoQuery, ldap.ScopeWholeSubtree, false)
 		if err != nil {
-			updateLog(fmt.Sprint(err), "red")
+			handleLDAPError(err)
 			return
 		}
 

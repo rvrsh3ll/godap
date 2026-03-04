@@ -219,7 +219,7 @@ func reloadADIDNSNode(currentNode *tview.TreeNode) {
 	if err == nil {
 		updateLog(fmt.Sprintf("Loaded node '%s'", node.DN), "green")
 	} else {
-		updateLog(fmt.Sprint(err), "red")
+		handleLDAPError(err)
 	}
 
 	showDetails(node.DN)
@@ -315,7 +315,7 @@ func loadZoneNodes(zoneNode *tview.TreeNode) int {
 
 	nodes, err := lc.GetADIDNSNodes(zoneDN)
 	if err != nil {
-		updateLog(fmt.Sprint(err), "red")
+		handleLDAPError(err)
 		return -1
 	}
 
@@ -649,8 +649,17 @@ func queryDnsZones(targetZone string) {
 	app.QueueUpdateDraw(func() {
 		updateLog("Querying ADIDNS zones...", "yellow")
 
-		domainZones, _ = lc.GetADIDNSZones(targetZone, false)
-		forestZones, _ = lc.GetADIDNSZones(targetZone, true)
+		var domainErr, forestErr error
+		domainZones, domainErr = lc.GetADIDNSZones(targetZone, false)
+		if domainErr != nil {
+			handleLDAPError(domainErr)
+			return
+		}
+		forestZones, forestErr = lc.GetADIDNSZones(targetZone, true)
+		if forestErr != nil {
+			handleLDAPError(forestErr)
+			return
+		}
 
 		totalZones := len(domainZones) + len(forestZones)
 		if totalZones == 0 {

@@ -178,6 +178,51 @@ var InstanceTypeMap = map[int]string{
 	32: "NamingContextRemovalFromDSA",
 }
 
+// Reference:
+// https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-adts/d2435927-0999-4c62-8c6d-13ba31a52e1a
+var TrustAttributeFlags = map[uint32]string{
+	0x00000001: "NON_TRANSITIVE",
+	0x00000002: "UPLEVEL_ONLY",
+	0x00000004: "QUARANTINED_DOMAIN",
+	0x00000008: "FOREST_TRANSITIVE",
+	0x00000010: "CROSS_ORGANIZATION",
+	0x00000020: "WITHIN_FOREST",
+	0x00000040: "TREAT_AS_EXTERNAL",
+	0x00000080: "USES_RC4_ENCRYPTION",
+	0x00000200: "CROSS_ORGANIZATION_NO_TGT_DELEGATION",
+	0x00000400: "PIM_TRUST",
+	0x00000800: "CROSS_ORGANIZATION_ENABLE_TGT_DELEGATION",
+}
+
+// Reference:
+// https://learn.microsoft.com/en-us/windows/win32/adschema/a-pwdproperties
+var PwdPropertiesFlags = map[uint32]string{
+	0x00000001: "PASSWORD_COMPLEX",
+	0x00000002: "PASSWORD_NO_ANON_CHANGE",
+	0x00000004: "PASSWORD_NO_CLEAR_CHANGE",
+	0x00000008: "LOCKOUT_ADMINS",
+	0x00000010: "PASSWORD_STORE_CLEARTEXT",
+	0x00000020: "REFUSE_PASSWORD_CHANGE",
+}
+
+// Reference:
+// https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-adts/d2435927-0999-4c62-8c6d-13ba31a52e1a
+var SearchFlagsMap = map[uint32]string{
+	0x00000001: "fATTINDEX",
+	0x00000002: "fPDNTATTINDEX",
+	0x00000004: "fANR",
+	0x00000008: "fPRESERVEONDELETE",
+	0x00000010: "fCOPY",
+	0x00000020: "fTUPLEINDEX",
+	0x00000040: "fSUBTREEATTINDEX",
+	0x00000080: "fCONFIDENTIAL",
+	0x00000100: "fNEVERVALUEAUDIT",
+	0x00000200: "fRODCFilteredAttribute",
+	0x00000400: "fEXTENDEDLINKTRACKING",
+	0x00000800: "fBASEONLY",
+	0x00001000: "fPARTITIONSECRET",
+}
+
 type LibQuery struct {
 	Title  string
 	Filter string

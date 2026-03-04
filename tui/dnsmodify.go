@@ -46,7 +46,7 @@ func addZoneHandler(zoneForm *XForm, currentFocus tview.Primitive) func() {
 		zoneDN, err := lc.AddADIDNSZone(zoneName, defaultProps, isForest)
 
 		if err != nil {
-			updateLog(fmt.Sprint(err), "red")
+			handleLDAPError(err)
 			app.SetRoot(appPanel, true).SetFocus(currentFocus)
 			return
 		}
@@ -321,7 +321,7 @@ func openActionNodeForm(target *tview.TreeNode, update bool) {
 		}
 
 		if err != nil {
-			updateLog(fmt.Sprint(err), "red")
+			handleLDAPError(err)
 			app.SetRoot(appPanel, true).SetFocus(currentFocus)
 			return
 		}
@@ -492,7 +492,7 @@ func openDeleteRecordForm(record *tview.TreeNode) {
 
 				err = lc.ReplaceADIDNSRecords(nodeDN, updateRecords)
 				if err != nil {
-					updateLog(fmt.Sprint(err), "red")
+					handleLDAPError(err)
 					app.SetRoot(appPanel, true).SetFocus(currentFocus)
 					return
 				}

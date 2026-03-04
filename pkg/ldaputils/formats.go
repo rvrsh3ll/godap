@@ -238,6 +238,22 @@ func ParseUACFlags(uacInt int) []string {
 	return uacFlagsList
 }
 
+func parseBitFlags(v uint32, flagMap map[uint32]string) []string {
+	keys := make([]uint32, 0, len(flagMap))
+	for k := range flagMap {
+		keys = append(keys, k)
+	}
+	sort.Slice(keys, func(i, j int) bool { return keys[i] < keys[j] })
+
+	var result []string
+	for _, bit := range keys {
+		if v&bit != 0 {
+			result = append(result, flagMap[bit])
+		}
+	}
+	return result
+}
+
 func ParseSystemFlags(v uint32) []string {
 	sysFlagKeys := make([]uint32, 0)
 	for k := range SystemFlags {
@@ -300,27 +316,52 @@ func FormatLDAPAttribute(attr *ldap.EntryAttribute, timeFormat string, timeOffse
 	}
 
 	/* Special parsing for bitset expansions */
-	if attr.Name == "userAccountControl" || attr.Name == "systemFlags" {
-		switch attr.Name {
-		case "userAccountControl":
-			uacInt, err := strconv.Atoi(attr.Values[0])
-			if err == nil {
-				formattedEntries = ParseUACFlags(uacInt)
+	bitsetAttrs := map[string]func(string) []string{
+		"userAccountControl": func(v string) []string {
+			i, err := strconv.Atoi(v)
+			if err != nil {
+				return nil
 			}
-		case "systemFlags":
-			intValue, err := strconv.ParseInt(attr.Values[0], 10, 64)
-			if err == nil {
-				formattedEntries = ParseSystemFlags(uint32(intValue))
+			return ParseUACFlags(i)
+		},
+		"systemFlags": func(v string) []string {
+			i, err := strconv.ParseInt(v, 10, 64)
+			if err != nil {
+				return nil
 			}
-		}
+			return ParseSystemFlags(uint32(i))
+		},
+		"trustAttributes": func(v string) []string {
+			i, err := strconv.ParseUint(v, 10, 32)
+			if err != nil {
+				return nil
+			}
+			return parseBitFlags(uint32(i), TrustAttributeFlags)
+		},
+		"pwdProperties": func(v string) []string {
+			i, err := strconv.ParseUint(v, 10, 32)
+			if err != nil {
+				return nil
+			}
+			return parseBitFlags(uint32(i), PwdPropertiesFlags)
+		},
+		"searchFlags": func(v string) []string {
+			i, err := strconv.ParseUint(v, 10, 32)
+			if err != nil {
+				return nil
+			}
+			return parseBitFlags(uint32(i), SearchFlagsMap)
+		},
+	}
 
+	if parseFn, ok := bitsetAttrs[attr.Name]; ok {
+		formattedEntries = parseFn(attr.Values[0])
 		for _, x := range formattedEntries {
 			formattedAttrValues = append(formattedAttrValues, FormattedAttrValue{
 				OriginalValue:  attr.Values[0],
 				FormattedValue: x,
 			})
 		}
-
 		return FormattedAttr{formattedAttrValues}
 	}
 
@@ -329,9 +370,9 @@ func FormatLDAPAttribute(attr *ldap.EntryAttribute, timeFormat string, timeOffse
 		// Format the value
 		var formattedEntry string
 		switch attr.Name {
-		case "objectSid":
+		case "objectSid", "securityIdentifier":
 			formattedEntry = "SID{" + ConvertSID(hex.EncodeToString(attr.ByteValues[idx])) + "}"
-		case "objectGUID", "schemaIDGUID":
+		case "objectGUID", "schemaIDGUID", "attributeSecurityGUID":
 			formattedEntry = "GUID{" + ConvertGUID(hex.EncodeToString(attr.ByteValues[idx])) + "}"
 		case "whenCreated", "whenChanged":
 			formattedEntry = FormatLDAPTime(val, timeFormat, timeOffset)
@@ -371,7 +412,7 @@ func FormatLDAPAttribute(attr *ldap.EntryAttribute, timeFormat string, timeOffse
 			if ok {
 				formattedEntry = instanceType
 			}
-		case "logonHours", "dSASignature":
+		case "logonHours", "dSASignature", "oMObjectClass", "cACertificate":
 			formattedEntry = "HEX{" + hex.EncodeToString(attr.ByteValues[idx]) + "}"
 		case "msDS-MaximumPasswordAge", "msDS-MinimumPasswordAge", "msDS-LockoutDuration", "msDS-LockoutObservationWindow", "lockoutDuration", "lockOutObservationWindow", "maxPwdAge", "minPwdAge", "forceLogoff", "msDS-UserTGTLifetime", "msDS-ComputerTGTLifetime", "msDS-ServiceTGTLifetime":
 			duration, err := ParseMSDuration(val)

@@ -21,9 +21,128 @@ var selectedAttrName string
 var ATTRS_DISALLOWED_DELETION_FORMATTED = []string{
 	"userAccountControl",
 	"systemFlags",
+	"trustAttributes",
+	"pwdProperties",
+	"searchFlags",
 }
 
 var HIDDEN_REF_FLAG = "[HIDDEN]"
+
+var entryMarker = regexp.MustCompile(`DEL:[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-4[a-fA-F0-9]{3}-[8|9|aA|bB][a-fA-F0-9]{3}-[a-fA-F0-9]{12}$`)
+
+// parseAttrsList splits a comma-separated attributes string into a slice.
+// Returns an empty slice (all attributes) when s is blank.
+func parseAttrsList(s string) []string {
+	if s == "" {
+		return []string{}
+	}
+	parts := strings.Split(s, ",")
+	for i, p := range parts {
+		parts[i] = strings.TrimSpace(p)
+	}
+	return parts
+}
+
+// getPageAttrs returns the configured attributes list for the given attrs panel.
+func getPageAttrs(attrsTable *tview.Table) []string {
+	switch attrsTable {
+	case explorerAttrsPanel:
+		return parseAttrsList(explorerAttrsList)
+	case searchAttrsPanel:
+		return parseAttrsList(searchAttrsList)
+	}
+	return []string{}
+}
+
+// warnAttrsList shows a confirmation modal if the given attrs list is non-empty
+// and is missing attributes required by the godap interface for the current
+// LDAP flavor. onProceed is called when the user confirms or no warning is needed.
+func warnAttrsList(attrsList string, currentFocus tview.Primitive, onProceed func()) {
+	attrs := parseAttrsList(attrsList)
+	if len(attrs) == 0 {
+		onProceed()
+		return
+	}
+
+	// Build a normalized set and check for wildcard in one pass.
+	set := make(map[string]bool, len(attrs))
+	for _, a := range attrs {
+		n := strings.ToLower(strings.TrimSpace(a))
+		if n == "*" {
+			onProceed()
+			return
+		}
+		set[n] = true
+	}
+
+	var missing []string
+
+	switch lc.Flavor {
+	case ldaputils.MicrosoftADFlavor:
+		if !set["name"] && !set["1.2.840.113556.1.4.1"] {
+			missing = append(missing, "name")
+		}
+		if !set["objectclass"] && !set["2.5.4.0"] {
+			missing = append(missing, "objectClass")
+		}
+		if !set["useraccountcontrol"] {
+			missing = append(missing, "userAccountControl")
+		}
+		if !set["isdeleted"] {
+			missing = append(missing, "isDeleted")
+		}
+		if !set["isrecycled"] {
+			missing = append(missing, "isRecycled")
+		}
+	case ldaputils.BasicLDAPFlavor:
+		if !set["objectclass"] && !set["2.5.4.0"] {
+			missing = append(missing, "objectClass")
+		}
+		if !set["cn"] {
+			missing = append(missing, "cn")
+		}
+		if !set["ou"] {
+			missing = append(missing, "ou")
+		}
+		if !set["dc"] {
+			missing = append(missing, "dc")
+		}
+		if !set["name"] {
+			missing = append(missing, "name")
+		}
+		if !set["uid"] {
+			missing = append(missing, "uid")
+		}
+	}
+
+	if len(missing) == 0 {
+		onProceed()
+		return
+	}
+
+	textSubj := "This attribute is"
+	refSubj := "it"
+	if len(missing) > 1 {
+		textSubj = "These attributes are"
+		refSubj = "them"
+	}
+	modal := tview.NewModal().
+		SetText(fmt.Sprintf(
+			"The attributes list is non-empty and missing: %s.\n%s required by the godap interface and omitting %s may cause display issues.\nProceed anyway?",
+			strings.Join(missing, ", "),
+			textSubj,
+			refSubj,
+		)).
+		AddButtons([]string{"No", "Yes"}).
+		SetDoneFunc(func(_ int, label string) {
+			app.SetRoot(appPanel, true).SetFocus(currentFocus)
+			if label == "Yes" {
+				onProceed()
+			}
+		})
+
+	app.SetRoot(modal, true).SetFocus(modal)
+}
 
 func truncateEllipsis(s string, maxLen int) string {
 	if maxLen < 0 {
@@ -124,12 +243,12 @@ func unloadChildren(parentNode *tview.TreeNode) {
 }
 
 // Loads child nodes and their attributes directly from LDAP
-func loadChildren(node *tview.TreeNode) {
+func loadChildren(node *tview.TreeNode) bool {
 	baseDN := node.GetReference().(string)
-	entries, err := lc.Query(baseDN, SearchFilter, ldap.ScopeSingleLevel, Deleted)
+	entries, err := lc.QueryWithAttrs(baseDN, SearchFilter, ldap.ScopeSingleLevel, Deleted, parseAttrsList(explorerAttrsList))
 	if err != nil {
-		updateLog(fmt.Sprint(err), "red")
-		return
+		handleLDAPError(err)
+		return false
 	}
 
 	// Sort results to guarantee stable view
@@ -144,6 +263,7 @@ func loadChildren(node *tview.TreeNode) {
 			node.AddChild(childNode)
 		}
 	}
+	return true
 }
 
 func handleAttrsKeyCtrlE(currentNode *tview.TreeNode, attrsPanel *tview.Table, cache *EntryCache) {
@@ -236,7 +356,7 @@ func handleAttrsKeyCtrlE(currentNode *tview.TreeNode, attrsPanel *tview.Table, c
 
 			err := lc.ModifyAttribute(baseDN, attrNameRef, attrVals)
 			if err != nil {
-				updateLog(fmt.Sprint(err), "red")
+				handleLDAPError(err)
 			} else {
 				updateLog("Attribute updated: '"+attrNameRef+"' from '"+baseDN+"'", "green")
 			}
@@ -284,7 +404,7 @@ func handleAttrsKeyDelete(currentNode *tview.TreeNode, attrsPanel *tview.Table, 
 				if buttonLabel == "Yes" {
 					err := lc.DeleteAttribute(baseDN, attrNameRef)
 					if err != nil {
-						updateLog(fmt.Sprint(err), "red")
+						handleLDAPError(err)
 					} else {
 						cache.Delete(baseDN)
 						reloadAttributesPanel(currentNode, attrsPanel, false, cache)
@@ -319,7 +439,7 @@ func handleAttrsKeyDelete(currentNode *tview.TreeNode, attrsPanel *tview.Table, 
 				if buttonLabel == "Yes" {
 					err := lc.DeleteAttributeValues(baseDN, attrNameRef, []string{attrValueRef})
 					if err != nil {
-						updateLog(fmt.Sprint(err), "red")
+						handleLDAPError(err)
 					} else {
 						cache.Delete(baseDN)
 						reloadAttributesPanel(currentNode, attrsPanel, false, cache)
@@ -368,7 +488,7 @@ func handleAttrsKeyCtrlN(currentNode *tview.TreeNode, attrsPanel *tview.Table, c
 
 			err := lc.AddAttribute(baseDN, attrName, []string{attrVal})
 			if err != nil {
-				updateLog(fmt.Sprint(err), "red")
+				handleLDAPError(err)
 			} else {
 				cache.Delete(baseDN)
 				reloadAttributesPanel(currentNode, attrsPanel, false, cache)
@@ -498,6 +618,8 @@ func attrsPanelKeyHandler(event *tcell.EventKey, currentNode *tview.TreeNode, ca
 	}
 
 	switch event.Key() {
+	case tcell.KeyCtrlS:
+		exportCacheToFile(currentNode, cache, "objects")
 	case tcell.KeyDelete:
 		handleAttrsKeyDelete(currentNode, attrsPanel, cache)
 	case tcell.KeyCtrlE:
@@ -546,9 +668,9 @@ func reloadAttributesPanel(node *tview.TreeNode, attrsTable *tview.Table, useCac
 			return fmt.Errorf("Couldn't reload attributes: node not cached")
 		}
 	} else {
-		entries, err := lc.Query(baseDN, SearchFilter, ldap.ScopeBaseObject, Deleted)
+		entries, err := lc.QueryWithAttrs(baseDN, SearchFilter, ldap.ScopeBaseObject, Deleted, getPageAttrs(attrsTable))
 		if err != nil {
-			updateLog(fmt.Sprint(err), "red")
+			handleLDAPError(err)
 			return err
 		}
 
@@ -699,47 +821,88 @@ func getDN(entry *ldap.Entry) string {
 	return strings.ToUpper(dn)
 }
 
+func dnPartToDomainName(dn string) string {
+	return strings.TrimPrefix(strings.ReplaceAll(dn, ",DC=", "."), "DC=")
+}
+
 func getNodeName(entry *ldap.Entry) string {
-	var classEmojisBuf bytes.Buffer
-	var emojisPrefix string
-
-	objectClasses := entry.GetAttributeValues("objectClass")
-	isDomain := false
-	for _, objectClass := range objectClasses {
-		if objectClass == "domain" || objectClass == "dcObject" {
-			isDomain = true
+	if entry.DN == "" {
+		if Emojis {
+			return ldaputils.EmojiMap["root"] + "RootDSE"
 		}
-
-		if emoji, ok := ldaputils.EmojiMap[objectClass]; ok {
-			classEmojisBuf.WriteString(emoji)
-		}
-	}
-
-	emojisPrefix = classEmojisBuf.String()
-
-	entryMarker := regexp.MustCompile("DEL:[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-4[a-fA-F0-9]{3}-[8|9|aA|bB][a-fA-F0-9]{3}-[a-fA-F0-9]{12}$")
-
-	if len(emojisPrefix) == 0 {
-		emojisPrefix = ldaputils.EmojiMap["container"]
+		return "RootDSE"
 	}
 
 	dn := getDN(entry)
+	dnParts := strings.Split(dn, ",")
 
-	finalName := strings.TrimPrefix(strings.ReplaceAll(dn, ",DC=", "."), "DC=")
+	// Build emoji prefix from objectClass values.
+	var classEmojisBuf bytes.Buffer
+	isDomain := false
+	for _, objectClass := range entry.GetAttributeValues("objectClass") {
+		if objectClass == "domain" || objectClass == "dcObject" {
+			isDomain = true
+			classEmojisBuf.WriteString(ldaputils.EmojiMap["domain"])
+		} else {
+			classEmojisBuf.WriteString(ldaputils.EmojiMap[objectClass])
+		}
+	}
+	emojisPrefix := classEmojisBuf.String()
+
+	// Fall back to DN-based emoji when objectClass wasn't fetched.
+	if emojisPrefix == "" {
+		switch {
+		case strings.HasPrefix(dn, "OU="):
+			emojisPrefix = ldaputils.EmojiMap["organizationalUnit"]
+		case strings.HasPrefix(dn, "DC="):
+			emojisPrefix = ldaputils.EmojiMap["domain"]
+		default:
+			emojisPrefix = ldaputils.EmojiMap["container"]
+		}
+	}
+
+	// Also detect domain root from DN structure when objectClass wasn't fetched.
 	if !isDomain {
-		finalName = entryMarker.ReplaceAllString(getName(entry), "")
+		isDomain = true
+		for _, part := range dnParts {
+			if !strings.HasPrefix(part, "DC=") {
+				isDomain = false
+				break
+			}
+		}
+	}
+
+	// Raw first component: used for the non-emoji return path and NoName fallback.
+	firstDNPart := dnParts[0]
+	if strings.HasPrefix(dnParts[0], "DC=") {
+		firstDNPart = dn
+	}
+
+	resolvedName := entryMarker.ReplaceAllString(getName(entry), "")
+
+	// Priority: NoName(getName returned nothing) > domain name > resolved name.
+	var finalName string
+	switch {
+	case resolvedName == "":
+		dnPartComponent := strings.Split(firstDNPart, "=")
+		if len(dnPartComponent) == 2 {
+			finalName = "<NoName:" + dnPartComponent[1] + ">"
+		} else if strings.HasPrefix(firstDNPart, "DC=") {
+			finalName = "<NoName:" + dnPartToDomainName(firstDNPart) + ">"
+		} else {
+			finalName = "<NoName>"
+		}
+	case isDomain:
+		finalName = dnPartToDomainName(dn)
+	default:
+		finalName = resolvedName
 	}
 
 	if Emojis {
 		return emojisPrefix + finalName
 	}
 
-	dnParts := strings.Split(dn, ",")
-	if len(dnParts) > 0 && !strings.HasPrefix(dn, "DC=") {
-		return dnParts[0]
-	}
-
-	return dn
+	return firstDNPart
 }
 
 func updateEmojis() {
@@ -777,9 +940,9 @@ func updateEmojis() {
 }
 
 func renderPartialTree(rootDN string, searchFilter string) *tview.TreeNode {
-	rootEntry, err := lc.Query(rootDN, "(objectClass=*)", ldap.ScopeBaseObject, Deleted)
+	rootEntry, err := lc.QueryWithAttrs(rootDN, "(objectClass=*)", ldap.ScopeBaseObject, Deleted, parseAttrsList(explorerAttrsList))
 	if err != nil {
-		updateLog(fmt.Sprint(err), "red")
+		handleLDAPError(err)
 		return nil
 	}
 
@@ -791,9 +954,6 @@ func renderPartialTree(rootDN string, searchFilter string) *tview.TreeNode {
 	explorerCache.Add(rootDN, rootEntry[0])
 
 	rootNodeName := getNodeName(rootEntry[0])
-	if rootDN == "" {
-		rootNodeName += "RootDSE"
-	}
 
 	rootNode = tview.NewTreeNode(rootNodeName).
 		SetReference(rootDN).
@@ -804,9 +964,9 @@ func renderPartialTree(rootDN string, searchFilter string) *tview.TreeNode {
 	}
 
 	var rootEntries []*ldap.Entry
-	rootEntries, err = lc.Query(rootDN, searchFilter, ldap.ScopeSingleLevel, Deleted)
+	rootEntries, err = lc.QueryWithAttrs(rootDN, searchFilter, ldap.ScopeSingleLevel, Deleted, parseAttrsList(explorerAttrsList))
 	if err != nil {
-		updateLog(fmt.Sprint(err), "red")
+		handleLDAPError(err)
 		return nil
 	}
 

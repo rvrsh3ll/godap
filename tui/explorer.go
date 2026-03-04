@@ -19,6 +19,7 @@ var (
 	explorerAttrsPanel *tview.Table
 	treeFlex           *tview.Flex
 	explorerBaseDN     string
+	explorerAttrsList  string
 )
 
 func initExplorerPage() {
@@ -60,7 +61,6 @@ func initExplorerPage() {
 		if currentNode == nil || currentNode.GetReference() == nil {
 			return event
 		}
-
 		return attrsPanelKeyHandler(event, currentNode, &explorerCache, explorerAttrsPanel)
 	})
 
@@ -76,7 +76,10 @@ func expandTreeNode(node *tview.TreeNode) {
 		if len(node.GetChildren()) == 0 {
 			go app.QueueUpdateDraw(func() {
 				updateLog("Loading children ("+node.GetReference().(string)+")", "yellow")
-				loadChildren(node)
+				ok := loadChildren(node)
+				if !ok {
+					return
+				}
 
 				n := len(node.GetChildren())
 
@@ -142,7 +145,7 @@ func openDeleteObjectForm(node *tview.TreeNode, done func()) {
 			if buttonLabel == "Yes" {
 				err := lc.DeleteObject(baseDN)
 				if err != nil {
-					updateLog(fmt.Sprintf("%s", err), "red")
+					handleLDAPError(err)
 				} else {
 					if done != nil {
 						done()
@@ -215,7 +218,7 @@ func openUpdateUacForm(node *tview.TreeNode, cache *EntryCache, done func()) {
 			err := lc.ModifyAttribute(baseDN, "userAccountControl", []string{strCheckboxState})
 
 			if err != nil {
-				updateLog(fmt.Sprintf("%s", err), "red")
+				handleLDAPError(err)
 			} else {
 				if done != nil {
 					done()
@@ -287,7 +290,7 @@ func openCreateObjectForm(node *tview.TreeNode, done func()) {
 			}
 
 			if err != nil {
-				updateLog(fmt.Sprintf("%s", err), "red")
+				handleLDAPError(err)
 			} else {
 				if done != nil {
 					done()
@@ -359,7 +362,7 @@ func openAddMemberToGroupForm(targetDN string, isGroup bool) {
 
 			err = lc.AddMemberToGroup(objectDN, groupDN)
 			if err != nil {
-				updateLog(fmt.Sprintf("%s", err), "red")
+				handleLDAPError(err)
 			} else {
 				updateLog("Member '"+objectDN+"' added to group '"+groupDN+"'", "green")
 			}
@@ -511,7 +514,7 @@ func openPasswordChangeForm(node *tview.TreeNode) {
 
 			err := lc.ResetPassword(baseDN, newPassword)
 			if err != nil {
-				updateLog(fmt.Sprint(err), "red")
+				handleLDAPError(err)
 			} else {
 				updateLog("Password changed: "+baseDN, "green")
 			}
@@ -545,7 +548,7 @@ func openMoveObjectForm(node *tview.TreeNode, done func(string)) {
 			err := lc.MoveObject(baseDN, newObjectDN)
 
 			if err != nil {
-				updateLog(fmt.Sprint(err), "red")
+				handleLDAPError(err)
 			} else {
 				updateLog("Object moved from '"+baseDN+"' to '"+newObjectDN+"'", "green")
 				if done != nil {
@@ -575,19 +578,28 @@ func openExplorerSettingsForm() {
 		SetText(SearchFilter)
 	assignInputFieldTheme(filterField)
 
+	attrsField := tview.NewInputField().
+		SetLabel("Attributes").
+		SetText(explorerAttrsList)
+	assignInputFieldTheme(attrsField)
+
 	form := NewXForm()
 	form.
 		AddFormItem(baseDNField).
 		AddFormItem(filterField).
+		AddFormItem(attrsField).
 		AddButton("Go Back", func() {
 			app.SetRoot(appPanel, true).SetFocus(currentFocus)
 		}).
-		AddButton("Set", func() {
-			explorerBaseDN = baseDNField.GetText()
-			SearchFilter = filterField.GetText()
-			updateLog("Explorer settings updated.", "green")
-			app.SetRoot(appPanel, true).SetFocus(currentFocus)
-			reloadExplorerPage()
+		AddButton("Query", func() {
+			newAttrsList := attrsField.GetText()
+			warnAttrsList(newAttrsList, currentFocus, func() {
+				explorerBaseDN = baseDNField.GetText()
+				SearchFilter = filterField.GetText()
+				explorerAttrsList = newAttrsList
+				app.SetRoot(appPanel, true).SetFocus(currentFocus)
+				reloadExplorerPage()
+			})
 		})
 
 	form.SetTitle("Explorer Settings").SetBorder(true)
@@ -595,7 +607,7 @@ func openExplorerSettingsForm() {
 
 	centeredForm := tview.NewGrid().
 		SetColumns(0, 60, 0).
-		SetRows(0, 9, 0).
+		SetRows(0, 11, 0).
 		AddItem(form, 1, 1, 1, 1, 0, 0, true)
 
 	app.SetRoot(centeredForm, true).SetFocus(form)
@@ -607,16 +619,22 @@ func explorerPageKeyHandler(event *tcell.EventKey) *tcell.EventKey {
 		return nil
 	}
 
+	// Handle keys that don't require a selected node first.
+	switch event.Key() {
+	case tcell.KeyCtrlF:
+		openFinder(&explorerCache, "LDAP Explorer")
+		return event
+	case tcell.KeyCtrlB:
+		openExplorerSettingsForm()
+		return event
+	}
+
 	currentNode := treePanel.GetCurrentNode()
 	if currentNode == nil {
 		return event
 	}
 
 	switch event.Key() {
-	case tcell.KeyCtrlF:
-		openFinder(&explorerCache, "LDAP Explorer")
-	case tcell.KeyCtrlB:
-		openExplorerSettingsForm()
 	case tcell.KeyCtrlP:
 		openPasswordChangeForm(currentNode)
 	case tcell.KeyCtrlL:

@@ -45,7 +45,7 @@ func openRemoveMemberFromGroupForm(targetDN string, groupDN string) {
 			if buttonLabel == "Yes" {
 				err := lc.RemoveMemberFromGroup(targetDN, groupDN)
 				if err != nil {
-					updateLog(fmt.Sprint(err), "red")
+					handleLDAPError(err)
 				} else {
 					updateLog(fmt.Sprintf("Member %s removed from group %s", targetDN, groupDN), "green")
 				}
@@ -77,7 +77,7 @@ func searchGroupMembersAD(groupDN string) {
 
 	members, err = lc.QueryGroupMembersDeep(groupDN, maxDepth)
 	if err != nil {
-		updateLog(fmt.Sprint(err), "red")
+		handleLDAPError(err)
 		return
 	}
 
@@ -119,7 +119,7 @@ func searchGroupMembersBasic(groupDN string) {
 
 	membersSimple, err = lc.QueryGroupMembersBasic(groupDN)
 	if err != nil {
-		updateLog(fmt.Sprint(err), "red")
+		handleLDAPError(err)
 		return
 	}
 
@@ -141,7 +141,7 @@ func searchObjectGroupsAD(objectDN string) {
 
 	groups, err = lc.QueryObjectGroupsDeep(objectDN, maxDepth)
 	if err != nil {
-		updateLog(fmt.Sprint(err), "red")
+		handleLDAPError(err)
 		return
 	}
 
@@ -165,7 +165,7 @@ func searchObjectGroupsBasic(objectDN string) {
 
 	groups, err = lc.QueryObjectGroupsBasic(objectDN)
 	if err != nil {
-		updateLog(fmt.Sprint(err), "red")
+		handleLDAPError(err)
 		return
 	}
 
@@ -271,7 +271,11 @@ func initGroupPage() {
 				groupDNQuery := fmt.Sprintf("(&(objectCategory=group)%s)", samOrDn)
 				result, err := lc.QueryFirst(groupDNQuery)
 				if err != nil {
-					updateLog(fmt.Sprintf("Group '%s' not found", queryGroup), "red")
+					if err.Error() == "Object not found" {
+						updateLog(fmt.Sprintf("Group '%s' not found", queryGroup), "red")
+					} else {
+						handleLDAPError(err)
+					}
 					return
 				}
 
@@ -289,7 +293,11 @@ func initGroupPage() {
 
 				result, err := lc.QueryFirst(groupDNQuery)
 				if err != nil {
-					updateLog(fmt.Sprintf("Group '%s' not found", queryGroup), "red")
+					if err.Error() == "Object not found" {
+						updateLog(fmt.Sprintf("Group '%s' not found", queryGroup), "red")
+					} else {
+						handleLDAPError(err)
+					}
 					return
 				}
 
@@ -307,7 +315,11 @@ func initGroupPage() {
 		queryFilter := ldaputils.GuessQueryFilter(queryObject, lc.Flavor)
 		result, err := lc.QueryFirst(queryFilter)
 		if err != nil {
-			updateLog(fmt.Sprintf("Object '%s' not found", queryObject), "red")
+			if err.Error() == "Object not found" {
+				updateLog(fmt.Sprintf("Object '%s' not found", queryObject), "red")
+			} else {
+				handleLDAPError(err)
+			}
 			return
 		} else {
 			objectDN = result.DN

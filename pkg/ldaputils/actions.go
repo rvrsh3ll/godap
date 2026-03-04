@@ -180,6 +180,10 @@ func (lc *LDAPConn) KerbBindWithCCache(ccachePath string, server string, krbDoma
 
 // Search
 func (lc *LDAPConn) Query(baseDN string, searchFilter string, scope int, showDeleted bool) ([]*ldap.Entry, error) {
+	return lc.QueryWithAttrs(baseDN, searchFilter, scope, showDeleted, []string{})
+}
+
+func (lc *LDAPConn) QueryWithAttrs(baseDN string, searchFilter string, scope int, showDeleted bool, attrs []string) ([]*ldap.Entry, error) {
 	var controls []ldap.Control = nil
 	if showDeleted {
 		controls = []ldap.Control{ldap.NewControlMicrosoftShowDeleted()}
@@ -189,7 +193,7 @@ func (lc *LDAPConn) Query(baseDN string, searchFilter string, scope int, showDel
 		baseDN,
 		scope, ldap.NeverDerefAliases, 0, 0, false,
 		searchFilter,
-		[]string{},
+		attrs,
 		controls,
 	)
 

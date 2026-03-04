@@ -140,7 +140,7 @@ func removeAce(aceIdx int) {
 			}
 		}
 	} else {
-		updateLog(fmt.Sprint(err), "red")
+		handleLDAPError(err)
 	}
 }
 
@@ -248,7 +248,7 @@ func createOrUpdateAce(aceIdx int, newAllowOrDeny bool, newACEFlags int, newMask
 		// Update selection
 		selectDaclEntry(newACE)
 	} else {
-		updateLog(fmt.Sprint(err), "red")
+		handleLDAPError(err)
 	}
 }
 

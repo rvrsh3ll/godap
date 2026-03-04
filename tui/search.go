@@ -16,6 +16,7 @@ import (
 
 var searchBaseDN string
 var searchScope int
+var searchAttrsList string
 
 var (
 	searchTreePanel  *tview.TreeView
@@ -166,7 +167,6 @@ func initSearchPage() {
 		if currentNode == nil || currentNode.GetReference() == nil {
 			return event
 		}
-
 		return attrsPanelKeyHandler(event, currentNode, &searchCache, searchAttrsPanel)
 	})
 	searchAttrsPanel.SetSelectionChangedFunc(storeAnchoredAttribute(searchAttrsPanel))
@@ -407,9 +407,6 @@ func executeSearch(overrideBaseDN string) {
 	baseDN := overrideBaseDN
 	if baseDN == "" {
 		baseDN = searchBaseDN
-		if baseDN == "" {
-			baseDN = lc.DefaultRootDN
-		}
 	}
 
 	rootNode := tview.NewTreeNode(baseDN).SetSelectable(true)
@@ -440,7 +437,14 @@ func executeSearch(overrideBaseDN string) {
 
 		startTime := time.Now()
 
-		entries, _ := lc.Query(baseDN, searchQuery, searchScope, Deleted)
+		entries, err := lc.QueryWithAttrs(baseDN, searchQuery, searchScope, Deleted, parseAttrsList(searchAttrsList))
+		if err != nil {
+			handleLDAPError(err)
+			runControl.Lock()
+			running = false
+			runControl.Unlock()
+			return
+		}
 
 		duration := time.Since(startTime)
 
@@ -547,6 +551,11 @@ func openSearchBaseDNForm() {
 		SetText(searchBaseDN)
 	assignInputFieldTheme(baseDNField)
 
+	attrsField := tview.NewInputField().
+		SetLabel("Attributes").
+		SetText(searchAttrsList)
+	assignInputFieldTheme(attrsField)
+
 	selectedScopeIdx := currentScopeIdx
 
 	form := NewXForm()
@@ -555,14 +564,19 @@ func openSearchBaseDNForm() {
 		AddDropDown("Scope", scopeOptions, currentScopeIdx, func(_ string, idx int) {
 			selectedScopeIdx = idx
 		}).
+		AddFormItem(attrsField).
 		AddButton("Go Back", func() {
 			app.SetRoot(appPanel, true).SetFocus(currentFocus)
 		}).
 		AddButton("Set", func() {
-			searchBaseDN = baseDNField.GetText()
-			searchScope = scopeValues[selectedScopeIdx]
-			updateLog("Search settings updated.", "green")
-			app.SetRoot(appPanel, true).SetFocus(currentFocus)
+			newAttrsList := attrsField.GetText()
+			warnAttrsList(newAttrsList, currentFocus, func() {
+				searchBaseDN = baseDNField.GetText()
+				searchScope = scopeValues[selectedScopeIdx]
+				searchAttrsList = newAttrsList
+				updateLog("Search settings updated. Rerun the search to get new results.", "green")
+				app.SetRoot(appPanel, true).SetFocus(currentFocus)
+			})
 		})
 
 	form.SetTitle("Search Settings").SetBorder(true)
@@ -570,7 +584,7 @@ func openSearchBaseDNForm() {
 
 	centeredForm := tview.NewGrid().
 		SetColumns(0, 60, 0).
-		SetRows(0, 9, 0).
+		SetRows(0, 11, 0).
 		AddItem(form, 1, 1, 1, 1, 0, 0, true)
 
 	app.SetRoot(centeredForm, true).SetFocus(form)

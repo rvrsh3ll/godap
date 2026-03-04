@@ -24,7 +24,7 @@ import (
 	"software.sslmate.com/src/go-pkcs12"
 )
 
-var GodapVer = "Godap v2.10.10"
+var GodapVer = "Godap v2.11.0"
 var (
 	LdapServer       string
 	LdapPort         int
@@ -84,7 +84,7 @@ var (
 	deletedFlagPanel   *tview.TextView
 
 	tlsConfig *tls.Config
-	lc        *ldaputils.LDAPConn
+	lc        = &ldaputils.LDAPConn{}
 	err       error
 )
 
@@ -257,6 +257,9 @@ func upgradeStartTLS() {
 	go func() {
 		err = lc.UpgradeToTLS(tlsConfig)
 		if err != nil {
+			// handleLDAPError intentionally not called
+			// as it's fairly common for the user to
+			// just forget to enable -I to skip TLS verification
 			updateLog(fmt.Sprint(err), "red")
 		} else {
 			updateLog("StartTLS request successful", "green")
@@ -607,7 +610,8 @@ func setupLDAPConn() error {
 
 	ldap.DefaultTimeout = time.Duration(Timeout) * time.Second
 
-	lc, err = ldaputils.NewLDAPConn(
+	var newLc *ldaputils.LDAPConn
+	newLc, err = ldaputils.NewLDAPConn(
 		LdapServer, LdapPort,
 		Ldaps, tlsConfig, PagingSize, RootDN,
 		proxyConn,
@@ -616,6 +620,7 @@ func setupLDAPConn() error {
 	if err != nil {
 		updateLog(fmt.Sprint(err), "red")
 	} else {
+		lc = newLc
 		updateLog("Connection success", "green")
 		isSecure := Ldaps
 
@@ -917,6 +922,15 @@ func updateLog(msg string, color string) {
 	formattedTime := currentTime.Format("2006-01-02 15:04:05")
 
 	logPanel.SetText("[" + formattedTime + "] " + msg).SetTextColor(tcell.GetColor(color))
+}
+
+func handleLDAPError(err error) {
+	msg := fmt.Sprint(err)
+	if ldap.IsErrorWithCode(err, ldap.ErrorNetwork) {
+		msg += " - Maybe try reconnecting with Ctrl+R"
+		updateStateBox(statusPanel, false)
+	}
+	updateLog(msg, "red")
 }
 
 func setPageFocus() {

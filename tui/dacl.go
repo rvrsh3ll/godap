@@ -365,7 +365,7 @@ func updateDaclEntries() {
 
 		daclEntriesPanel.Select(1, 1)
 	} else {
-		updateLog(fmt.Sprint(err), "red")
+		handleLDAPError(err)
 	}
 }
 
@@ -465,7 +465,7 @@ func loadChangeOwnerForm() {
 
 				go app.QueueUpdateDraw(updateDaclEntries)
 			} else {
-				updateLog(fmt.Sprint(err), "red")
+				handleLDAPError(err)
 			}
 			app.SetRoot(appPanel, true).SetFocus(daclEntriesPanel)
 		})
@@ -541,7 +541,7 @@ func loadChangeControlFlagsForm() {
 				updateLog("Control flags updated for '"+object+"'", "green")
 				go app.QueueUpdateDraw(updateDaclEntries)
 			} else {
-				updateLog(fmt.Sprint(err), "red")
+				handleLDAPError(err)
 			}
 
 			app.SetRoot(appPanel, true).SetFocus(daclEntriesPanel)
